@@ -62,9 +62,11 @@ TOOL_SRCS = \
 	geomExtract.c \
 	loadHistory.c \
 	maxStress.c \
+	regionreassembler.c \
 	screwBreaks.c \
 	seriesAnalyzer.c \
 	sierradump.c \
+	subsetter.c \
 	tearCompare.c \
 	tears.c \
 	threshBoundBox.c \
@@ -73,9 +75,6 @@ TOOL_SRCS = \
 	varStats.c \
 	volumeSegments.c \
 	windowVars.c 
-#	testrd.c \
-#	testwt.c
-
 
 # Wrappers - will need to be munged upon install
 TOOL_WRAPPERS_SRCS = fc2exo.in fcinfo.in

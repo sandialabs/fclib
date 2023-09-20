@@ -218,7 +218,8 @@ int main(void) {
     fc_addMemberToSubset(temp_subset, numElemPerDim[0]*numElemPerDim[1]*2 +
 			 i);
     }
-  fc_createSubsetMesh(temp_subset, dataset, 1, "temp", &temp_mesh);
+  fc_createSubsetMesh(temp_subset, dataset, 1, 1, 1, 1, 1,
+		      "temp", &temp_mesh, NULL, NULL);
   fc_deleteSubset(temp_subset);
   fc_getMeshInfo(temp_mesh, &topodim, &numDim, &numVertex, &numElement,
 		 &elemType);

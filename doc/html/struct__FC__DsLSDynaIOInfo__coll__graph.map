@@ -1,0 +1,4 @@
+<area shape="rect" title="startElemPerChunk\nnumElemChunks\nnumElemPerChunk\nvertIDs\nnumTotalVert\nwordlen\ndoEndianSwap\nnumMesh\ncoordsFileNum" alt="" coords="28,31,36,39">
+<area shape="rect" title="startElemPerChunk\nnumElemChunks\nnumElemPerChunk\nvertIDs\nnumTotalVert\nwordlen\ndoEndianSwap\nnumMesh\ncoordsFileNum" alt="" coords="65,237,73,245">
+<area shape="rect" title="conns2_offset\nconns4_offset\nconns8_offset\ncoords_offset" alt="" coords="204,31,212,39">
+<area shape="rect" title="conns2_offset\nconns4_offset\nconns8_offset\ncoords_offset" alt="" coords="147,237,155,245">

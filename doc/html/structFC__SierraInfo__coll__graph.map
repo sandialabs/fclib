@@ -1,0 +1,24 @@
+<area shape="rect" href="$structFC__SierraSpotWeldInfo.html" title="Container for Sierra spot weld information." alt="" coords="291,396,475,423">
+<area shape="rect" title="spotwelds" alt="" coords="388,420,396,428">
+<area shape="rect" title="spotwelds" alt="" coords="440,488,448,496">
+<area shape="rect" title="exponent\nnormal_scale\ntangent_scale" alt="" coords="61,31,69,39">
+<area shape="rect" title="exponent\nnormal_scale\ntangent_scale" alt="" coords="313,392,321,400">
+<area shape="rect" href="$structFC__SierraFuncInfo.html" title="Container for Sierra function information." alt="" coords="169,219,319,245">
+<area shape="rect" title="values\nordinate_max\nabscissa_min\nabscissa_max\nordinate_min" alt="" coords="71,31,79,39">
+<area shape="rect" title="values\nordinate_max\nabscissa_min\nabscissa_max\nordinate_min" alt="" coords="219,215,227,223">
+<area shape="rect" title="displ_alias\nf_ext_alias\nname" alt="" coords="389,20,397,28">
+<area shape="rect" title="displ_alias\nf_ext_alias\nname" alt="" coords="471,488,479,496">
+<area shape="rect" title="nodeset\nsurface_name\ntangent\nnormal\nnodeset_name\nsurface\nname" alt="" coords="363,31,371,39">
+<area shape="rect" title="nodeset\nsurface_name\ntangent\nnormal\nnodeset_name\nsurface\nname" alt="" coords="379,392,387,400">
+<area shape="rect" title="abscissa_label\ntype\nname\nordinate_label" alt="" coords="336,21,344,29">
+<area shape="rect" title="abscissa_label\ntype\nname\nordinate_label" alt="" coords="235,215,243,223">
+<area shape="rect" title="numFunction\nnumSpotWeld" alt="" coords="619,31,627,39">
+<area shape="rect" title="numFunction\nnumSpotWeld" alt="" coords="483,488,491,496">
+<area shape="rect" title="tangentId\nnormalId\ndecay_cycles" alt="" coords="604,31,612,39">
+<area shape="rect" title="tangentId\nnormalId\ndecay_cycles" alt="" coords="472,399,480,407">
+<area shape="rect" title="numValue" alt="" coords="583,24,591,32">
+<area shape="rect" title="numValue" alt="" coords="259,215,267,223">
+<area shape="rect" title="functions" alt="" coords="231,243,239,251">
+<area shape="rect" title="functions" alt="" coords="393,489,401,497">
+<area shape="rect" title="tangent_p\nnormal_p" alt="" coords="239,243,247,251">
+<area shape="rect" title="tangent_p\nnormal_p" alt="" coords="308,392,316,400">

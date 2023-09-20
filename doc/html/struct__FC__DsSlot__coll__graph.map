@@ -1,0 +1,23 @@
+<area shape="rect" title="fileType" alt="" coords="88,559,96,567">
+<area shape="rect" title="fileType" alt="" coords="277,629,285,637">
+<area shape="rect" title="baseFile" alt="" coords="332,277,340,285">
+<area shape="rect" title="baseFile" alt="" coords="327,627,335,635">
+<area shape="rect" href="$struct__FC__SlotHeader.html" title="Slot Header." alt="" coords="149,535,283,561">
+<area shape="rect" title="name" alt="" coords="305,277,313,285">
+<area shape="rect" title="name" alt="" coords="215,531,223,539">
+<area shape="rect" title="header" alt="" coords="221,559,229,567">
+<area shape="rect" title="header" alt="" coords="295,627,303,635">
+<area shape="rect" title="seqVarIDs\nbasicVarIDs\nwritable\nmeshIDs\nseqIDs\nnumSeq\nnumSeqVar\nnumStepPerSeqVar\nnumBasicVar\nnumMesh\n..." alt="" coords="423,31,431,39">
+<area shape="rect" title="seqVarIDs\nbasicVarIDs\nwritable\nmeshIDs\nseqIDs\nnumSeq\nnumSeqVar\nnumStepPerSeqVar\nnumBasicVar\nnumMesh\n..." alt="" coords="343,627,351,635">
+<area shape="rect" title="uID\nslotID\ncommitted" alt="" coords="403,29,411,37">
+<area shape="rect" title="uID\nslotID\ncommitted" alt="" coords="209,531,217,539">
+<area shape="rect" href="$struct__FC__DsLSDynaIOInfo.html" title="Struct hold info about the file format for dataset." alt="" coords="513,253,681,280">
+<area shape="rect" title="startElemPerChunk\nnumElemChunks\nnumElemPerChunk\nvertIDs\nnumTotalVert\nwordlen\ndoEndianSwap\nnumMesh\ncoordsFileNum" alt="" coords="429,31,437,39">
+<area shape="rect" title="startElemPerChunk\nnumElemChunks\nnumElemPerChunk\nvertIDs\nnumTotalVert\nwordlen\ndoEndianSwap\nnumMesh\ncoordsFileNum" alt="" coords="520,249,528,257">
+<area shape="rect" href="$struct__FC__DsFileIOInfo.html" title="Struct to hold info about the file format for dataset." alt="" coords="496,535,635,561">
+<area shape="rect" title="fileInfo" alt="" coords="533,559,541,567">
+<area shape="rect" title="fileInfo" alt="" coords="372,627,380,635">
+<area shape="rect" title="dynaInfo" alt="" coords="592,277,600,285">
+<area shape="rect" title="dynaInfo" alt="" coords="563,531,571,539">
+<area shape="rect" title="conns2_offset\nconns4_offset\nconns8_offset\ncoords_offset" alt="" coords="635,31,643,39">
+<area shape="rect" title="conns2_offset\nconns4_offset\nconns8_offset\ncoords_offset" alt="" coords="597,249,605,257">

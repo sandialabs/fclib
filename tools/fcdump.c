@@ -196,7 +196,7 @@ int main(int argc, char **argv)
   FC_ReturnCode rc;
   int i, j, k;
   int printBigData = 0;
-  FC_VerbosityLevel verbosity = FC_QUIET;
+  FC_VerbosityLevel verbosity = FC_ERROR_MESSAGES;
   int needed;
 
   char* filename = NULL;
@@ -667,6 +667,9 @@ int main(int argc, char **argv)
   free(sequences);
   
   fc_deleteDataset(dataset);
+
+  fc_printLogCounters(verbosity);
+
   fc_finalLibrary();  
 
   exit(FC_SUCCESS); 

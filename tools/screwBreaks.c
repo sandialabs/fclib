@@ -259,9 +259,9 @@ static int parser(int argc, char** argv, char** file_name,
     printf("   ./screwBreaks -b 1 -n 2 elem_death \"<=\" 0 elem_var_8 \">\" 0.1 ~wkoegle/Work/fcdmf/Data/screw-preload/d3plot Material_ID_1 \n");
     printf("   ./screwBreaks ~wkoegle/Work/fcdmf/Data/hatch_run1/d3plot\n");
     printf("   ./screwBreaks ~wkoegle/Work/fcdmf/Data/run30-EMMI-screws/d3plot Material_ID_25 Material_ID_49 > junk; grep \"Screw 0\" junk\n");
+    printf("   ./screwBreaks -n 1 damage \">=\" 0.5 ../data/gen_screws.ex2 \n");
     printf("\n");
     printf("Output: Prints Breakage Ratio and notification of when screws first break.\n");
-    printf("Stops printing out info for a screw once it has broken.\n");
     printf("\n");
     printf("Note: Screws can be normal screw shape or cylindrical etc. Only constraint is\n");
     printf("that they have an identifiable base for the Breakage Ratio calculation.\n");

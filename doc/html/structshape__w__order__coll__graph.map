@@ -1,0 +1,19 @@
+<area shape="rect" href="$structFC__Shape.html" title="Shape Struct." alt="" coords="29,359,123,385">
+<area shape="rect" title="shape" alt="" coords="80,383,88,391">
+<area shape="rect" title="shape" alt="" coords="123,451,131,459">
+<area shape="rect" title="shapeID\nmeshID" alt="" coords="88,31,96,39">
+<area shape="rect" title="shapeID\nmeshID" alt="" coords="99,451,107,459">
+<area shape="rect" title="adjmatrix\nnumSides" alt="" coords="103,31,111,39">
+<area shape="rect" title="adjmatrix\nnumSides" alt="" coords="72,355,80,363">
+<area shape="rect" href="$structFC__Subset.html" title="Subset Handle." alt="" coords="159,244,255,271">
+<area shape="rect" title="uID\nslotID" alt="" coords="112,31,120,39">
+<area shape="rect" title="uID\nslotID" alt="" coords="197,240,205,248">
+<area shape="rect" href="$structshape__order.html" title="shape_order" alt="" coords="255,303,364,329">
+<area shape="rect" title="shapeID\nends\nmeshID\nnumEnds\nnumSides\nareaorder\nopposingorder\nscreworder\nnonadjorder" alt="" coords="125,20,133,28">
+<area shape="rect" title="shapeID\nends\nmeshID\nnumEnds\nnumSides\nareaorder\nopposingorder\nscreworder\nnonadjorder" alt="" coords="305,299,313,307">
+<area shape="rect" title="shapeinnards" alt="" coords="197,268,205,276">
+<area shape="rect" title="shapeinnards" alt="" coords="139,451,147,459">
+<area shape="rect" title="elems\nfaces" alt="" coords="155,265,163,273">
+<area shape="rect" title="elems\nfaces" alt="" coords="75,355,83,363">
+<area shape="rect" title="order" alt="" coords="300,327,308,335">
+<area shape="rect" title="order" alt="" coords="167,451,175,459">

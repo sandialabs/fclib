@@ -796,35 +796,40 @@ int main(int argc, char** argv)
 	  set_extra_list = NULL;
 	}
 	error = ex_get_set(exoid, obj_type, ids[j], set_entity_list, set_extra_list);
-	if (error != 0) {
+	if (error < 0 ) { 
 	  fprintf(stderr, "Error: failed to get set entities\n");
+	  fflush(NULL);
 	  exit(-1);
-	}
-	switch (i){
-	case NODESET:
-	  printf("  node_id:\n");
-	  for (k = 0; k < num_entries_in_set; k++){
-	    printf("    %d\n", set_entity_list[k]);
-	  }
-	  break;
-	case ELEMSET:
-	  printf("  elem_id:\n");
-	  for (k = 0; k < num_entries_in_set; k++){
-	    printf("    %d\n", set_entity_list[k]);
-	  }
-	  break;
-	case SIDESET:
-	  printf("  elem_id     side_index:\n");
-	  for (k = 0; k < num_entries_in_set; k++){
-	    printf("    %d            %d\n", set_entity_list[k],
-		   set_extra_list[k]);
-	  }
-	  break;
-	default:
-	  printf("  entity_id   orientation:\n");
-	  for (k = 0; k < num_entries_in_set; k++){
-	    printf("    %d            %d\n", set_entity_list[k],
-		   set_extra_list[k]);
+	} else if (error > 0){
+	  fprintf(stderr, "Warning: failed to get set entities\n");
+	  fflush(NULL);
+	} else {
+	  switch (i){
+	  case NODESET:
+	    printf("  node_id:\n");
+	    for (k = 0; k < num_entries_in_set; k++){
+	      printf("    %d\n", set_entity_list[k]);
+	    }
+	    break;
+	  case ELEMSET:
+	    printf("  elem_id:\n");
+	    for (k = 0; k < num_entries_in_set; k++){
+	      printf("    %d\n", set_entity_list[k]);
+	    }
+	    break;
+	  case SIDESET:
+	    printf("  elem_id     side_index:\n");
+	    for (k = 0; k < num_entries_in_set; k++){
+	      printf("    %d            %d\n", set_entity_list[k],
+		     set_extra_list[k]);
+	    }
+	    break;
+	  default:
+	    printf("  entity_id   orientation:\n");
+	    for (k = 0; k < num_entries_in_set; k++){
+	      printf("    %d            %d\n", set_entity_list[k],
+		     set_extra_list[k]);
+	    }
 	  }
 	}
 	if (set_entity_list) free(set_entity_list);
@@ -857,14 +862,19 @@ int main(int argc, char** argv)
 	printf("%s Property #%d: '%s'\n", str, j, prop_names[j]);
 	for (k = 0; k < num_set[i]; k++) {
 	  int prop_value;
+	  //this will return with EX_WARN if the set is empty.
+	  //that is defined in exodusII_int.h
 	  error = ex_get_prop(exoid, obj_type, ids[k], prop_names[j],
 			      &prop_value);
-	  if (error != 0) {
+	  if (error < 0) {
 	    fprintf(stderr, "Error: failed to get set props\n");
 	    fflush(NULL);
 	    exit(-1);
+	  } else if (error > 0 ){
+	    fprintf(stderr, "Warning: failed to get set props");
+	  } else {
+	    printf("  %s (ID = %d): %d\n", str, ids[k], prop_value);
 	  }
-	  printf("  %s (ID = %d): %d\n", str, ids[k], prop_value);
 	}
 	printf("\n");
 	fflush(NULL);

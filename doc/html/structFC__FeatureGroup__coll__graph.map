@@ -1,0 +1,12 @@
+<area shape="rect" href="$struct__FC__Feature.html" title="Feature object." alt="" coords="195,243,301,269">
+<area shape="rect" title="features" alt="" coords="244,267,252,275">
+<area shape="rect" title="features" alt="" coords="244,355,252,363">
+<area shape="rect" title="numStep\nnumFeature\nroiFeatureIDs\nnumROIperStep" alt="" coords="224,28,232,36">
+<area shape="rect" title="numStep\nnumFeature\nroiFeatureIDs\nnumROIperStep" alt="" coords="172,355,180,363">
+<area shape="rect" title="childIDs\nnumROI\nnumChild\nroiIDs\nstepIDs\nid\nparentIDs\nnumParent" alt="" coords="244,31,252,39">
+<area shape="rect" title="childIDs\nnumROI\nnumChild\nroiIDs\nstepIDs\nid\nparentIDs\nnumParent" alt="" coords="244,239,252,247">
+<area shape="rect" href="$structFC__Subset.html" title="Subset Handle." alt="" coords="325,243,421,269">
+<area shape="rect" title="uID\nslotID" alt="" coords="264,20,272,28">
+<area shape="rect" title="uID\nslotID" alt="" coords="371,239,379,247">
+<area shape="rect" title="rois" alt="" coords="360,267,368,275">
+<area shape="rect" title="rois" alt="" coords="272,355,280,363">

@@ -58,7 +58,7 @@ CHECK_TARBALL = check-0.9.0.tar.gz
 CHECK_DIR = $(CHECK_TARBALL:.tar.gz=)
 
 
-ALL_FILES = Makefile $(CHECK_TARBALL) 
+ALL_FILES = Makefile $(CHECK_TARBALL) valgrind.supp
 
 
 ##

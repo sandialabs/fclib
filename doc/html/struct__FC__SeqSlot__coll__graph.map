@@ -1,0 +1,21 @@
+<area shape="rect" href="$structFC__Dataset.html" title="Dataset Handle." alt="" coords="120,137,221,164">
+<area shape="rect" title="ds" alt="" coords="208,161,216,169">
+<area shape="rect" title="ds" alt="" coords="395,229,403,237">
+<area shape="rect" title="numStep" alt="" coords="127,28,135,36">
+<area shape="rect" title="numStep" alt="" coords="377,240,385,248">
+<area shape="rect" title="uID\nslotID" alt="" coords="145,31,153,39">
+<area shape="rect" title="uID\nslotID" alt="" coords="159,133,167,141">
+<area shape="rect" href="$struct__FC__SlotHeader.html" title="Slot Header." alt="" coords="245,137,379,164">
+<area shape="rect" title="uID\nslotID\ncommitted" alt="" coords="164,31,172,39">
+<area shape="rect" title="uID\nslotID\ncommitted" alt="" coords="272,133,280,141">
+<area shape="rect" title="header" alt="" coords="328,161,336,169">
+<area shape="rect" title="header" alt="" coords="415,229,423,237">
+<area shape="rect" title="name" alt="" coords="325,31,333,39">
+<area shape="rect" title="name" alt="" coords="311,133,319,141">
+<area shape="rect" href="$struct__FC__SeqFileIOInfo.html" title="Struct to hold info about the file format for sequence." alt="" coords="403,137,552,164">
+<area shape="rect" title="fileInfo" alt="" coords="467,161,475,169">
+<area shape="rect" title="fileInfo" alt="" coords="437,229,445,237">
+<area shape="rect" title="coords" alt="" coords="580,161,588,169">
+<area shape="rect" title="coords" alt="" coords="461,229,469,237">
+<area shape="rect" title="datatype" alt="" coords="689,161,697,169">
+<area shape="rect" title="datatype" alt="" coords="487,233,495,241">

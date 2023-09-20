@@ -1249,7 +1249,9 @@ int main(int argc, char** argv) {
     FC_Mesh temp_mesh;
     char *temp_name;
     fc_getSubsetName(sides[i], &temp_name);
-    rc = fc_createSubsetMesh(sides[i], dataset, 1, temp_name, &temp_mesh);
+    rc = fc_createSubsetMesh(sides[i], dataset, 1, 1, 1, 1, 1,
+			     temp_name, &temp_mesh,
+			     NULL, NULL);
     free(temp_name);
     fc_exitIfErrorPrintf(rc, 
                        "Could not create mesh versions of the side subsets");

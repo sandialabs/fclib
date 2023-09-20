@@ -1,0 +1,7 @@
+<area shape="rect" href="$struct__FC__VarLSDynaIOInfo.html" title="Struct hold info about the file format for variable." alt="" coords="5,153,179,180">
+<area shape="rect" title="dynaInfo" alt="" coords="88,177,96,185">
+<area shape="rect" title="dynaInfo" alt="" coords="88,245,96,253">
+<area shape="rect" title="dataFileNum\nstripeID\ndoDispl\nisStriped" alt="" coords="23,31,31,39">
+<area shape="rect" title="dataFileNum\nstripeID\ndoDispl\nisStriped" alt="" coords="55,149,63,157">
+<area shape="rect" title="data_offset" alt="" coords="147,31,155,39">
+<area shape="rect" title="data_offset" alt="" coords="101,149,109,157">
