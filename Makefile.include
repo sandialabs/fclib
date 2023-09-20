@@ -68,7 +68,7 @@ LIBXML2CONFIG = /usr/bin/xml2-config
 # NEW: use the path of the bundle by default
 mkfile_path := $(abspath $(lastword $(MAKEFILE_LIST)))
 mkfile_dir := $(dir $(mkfile_path))
-NETCDF_HOME = ${mkfile_dir}/tpls/bundle
+NETCDF_HOME = ${mkfile_dir}/third-party-libraries/bundle
 
 # OLD: assume a really old version of exodus happens to be installed
 #NETCDF_HOME = /usr/local/exodusii-4.17-bundle

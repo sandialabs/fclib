@@ -52,7 +52,9 @@ for information about this release.
 
 FCLib is a product of the FCDMF project (Feature Characterization using DMF)
 which in turn is part of the ASCI Data Discovery project at Sandia National
-Labs.  For more information about FCDMF and the latest versions of FCLib, go to
-http://fclib.ca.sandia.gov (this page is only accesible from tri-lab addresses)
+Labs.
 
+
+NOTE: FCLib has not been developed since 2008. This repository is here for
+      historical documentation and is not actively maintained.
 

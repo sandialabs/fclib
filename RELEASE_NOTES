@@ -41,8 +41,14 @@ FCLib Release Notes
 Latest Release
 -------------------------------------------------------------------------------
 
+Version 1.7.1 (current)
 
-Version 1.7.0 (current)
+In 2023 FCLib was moved to https://github.com/sandialabs/fclib. The main
+repository was updated to include the Exodus bundle and simplify the build
+process. This software is 15 years out of date and is no longer developed.
+
+
+Version 1.7.0 (10/27/2008)
 
 What's new:
 

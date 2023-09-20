@@ -42,12 +42,20 @@ Table of Contents
 -------------------------------------------------------------------------------
 
 
+  0. **LEGACY SOFTWARE**
   1. Platforms
   2. Downloads
   3. Dependencies
   4. Configuring
   5. Building
   6. Troubleshooting
+
+
+0. LEGACY SOFTWARE
+
+The FCDMF project ended in 2008 and is no longer being developed. It was
+archived on Github in 2023 in an effort to organize different open source
+projects at Sandia.
 
 
 1. Platforms
@@ -59,20 +67,25 @@ compilers.
 
 2. Downloads
 
-The code is available for download from our web page http://
-fclib.ca.sandia.gov. Some of the optional libraries are available there as
-well.
+The code is available for download from https://github.com/sandialabs/fclib. This
+release includes an archive of Exodus that is sufficient for building FCLib
+on a 2023 system.
 
 3. Dependencies
 
 There are no required dependencies for FCLib. Optional dependencies include:
 
-* File IO w/ ExodusII -- Requires ExodusII 4.71 or greater and NetCDF 3.6.2 or
-  greater -- ExodusII is a file format library developed by Sandia National
-  Labs and is available (bundled with NetCDF) at our web site http://
-  fclib.ca.sandia.gov.
+* File IO w/ ExodusII -- FCLib was developed with an older version of Exodus
+  and will not work with newer versions. In 2023 it was tested with
+  ExodusII 4.71 and NetCDF 3.6.2. The FCLib repo now includes these libraries
+  in the `third-party-library` directory. To build these libraries:
+  
+  cd third-party-library
+  make
+
 * File IO w/ Gnome libxml2 -- This XML file format library is found on most
   Unix systems in /usr. Otherwise it is available at http://xmlsoft.org.
+
 * Building Documentation -- Requires Doxygen 1.4 or greater (and optionally
   Graphviz with gd support) -- Doxygen is a documentation system for C++, C,
   Java, and a variety of other languages. It can be obtained at http://
@@ -91,7 +104,8 @@ your system (more instructions can be found within that file):
 
 * For Exodus File IO -- On by default (to turn off set HAVE_EXODUS to no).
   Provide the location of the include and library directories for Exodus II and
-  NetCDF.
+  NetCDF. By default, this points to the installation in the
+  `third-party-libraries` directory
 * For XML File IO -- On by default (to turn off set HAVE_LIBXML2 to no).
   Provide the location of of the libxml2 helper program xml2-config.
 * To install outside of build directory -- Provide an absolute path to the
@@ -137,8 +151,7 @@ make check2   - Build and run additional unit tests. Only works if you have
 Troubleshooting
 -------------------------------------------------------------------------------
 
-If you problem is not addressed by one of the items below, please contact as at
-fclib-help@ca.sandia.gov.
+Solutions to common problems are as follows:
 
   1. When making the documentation, if you get errors about building dependency
      graphs, you will need to also install Graphviz (http://
@@ -161,4 +174,4 @@ fclib-help@ca.sandia.gov.
      be happening automatically for linux machines).
 
 -------------------------------------------------------------------------------
-     Last modified: $Date: 2006/11/14 20:02:08 $
+     Last modified: $Date: 2023/10/19 22:22:08 $
