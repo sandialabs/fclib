@@ -1,0 +1,782 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML4.0 Transitional//EN">
+
+<!--                                                             
+  Copyright (2000) Sandia Corporation. Under the terms of Contract
+  DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+  certain rights in this software.
+ 
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+ 
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the
+      distribution.
+
+    * Neither the name of Sandia nor the names of any contributors may
+      be used to endorse or promote products derived from this software
+      without specific prior written permission.
+  
+    * Modified source versions must be plainly marked as such, and must
+      not be misrepresented as being the original software.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+  ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR CONTRIBUTORS BE LIABLE FOR 
+  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
+  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+  OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH 
+  DAMAGE.
+-->
+
+<!--                                                             
+  $Source: /usr/local/Repositories/fcdmf/fclib/doxyfiles/FCLib_designNotes.html,v $
+  $Revision: 1.28 $
+  $Date: 2006/12/06 06:55:33 $
+-->
+
+<html>
+
+<head>
+   <title>FCLib Design Notes</title>
+</head>
+
+  <body bgcolor="#ffffff" vlink="#0000ff" alink="#0000ff">
+
+  This document provides information of some of the design elements of
+  the FCLib innards and some project maintainence procedures. This 
+  information is not necessary for 
+  FCLib application developers, but would be of interest to developers of
+  FCLib itself. More details on the various topics can be found within
+  the relevant modules. The aggregation here provides a starting place.
+
+
+  <h3><hr>Table of Contents<hr></h3>
+
+<ol>
+   <li><a href="#Platforms">Tables and Handles for Data Object Management</a></li>
+   <li><a href="#Mesh">Data Structures of the Mesh</a></li>
+   <li><a href="#FileIO">File IO</a></li>
+   <li><a href="#FileFormats">File Formats</a></li>
+   <li><a href="#FT">Feature Tracking</a></li>
+   <li><a href="#Testing">Testing</a></li>
+</ol>
+
+
+  <!--  ------------------------------------------------  -->
+  <a name="Handles"> <h3> <hr> Tables and Handles for Data Object Management<hr> </h3></a>
+  <!--  ------------------------------------------------  -->
+
+  <b>Tables, Handles, and Slots</b><br>
+  The major types of data "objects" manipulated by users, like Subsets, Meshes,
+  etc., are actually just "Handles" that are used by the library to look up the
+  data that actually makes up the objects. This usage model is called "opaque
+  handles" and is used to try to give an object-oriented feel to an interface,
+  and to discourage casual direct access to complex data stored in structs.
+
+  <p>
+  The structs that contain the objects' actual data are called "Slots" and are
+  stored internally by the library in "Tables" which are essentially arrays of
+  the "Slots". The handle is a struct that contains a number corresponding
+  to the location of a object in the appropriate table (its slotID ==
+  index into the table). Slots are emptied when objects are deleted, and then
+  may be resued, so Handles and slots also have a unique identifier (uID) to 
+  verify that slot contents have not changed.
+
+  <p>
+  Thus, data for a particular data object type (here we will consider subsets
+  as a concrete example) is stored in a Slot for that type ("SubSlot") that is
+  located in a Table ("SubTable"). The user's Subset is then actually only a
+  Handle, and functions called on the subset will eventually use the index in
+  the handle to access the Slot in the Table's array.
+
+  <p>
+  There is one Table for each data object type (Dataset, Mesh, Variable,
+  Subset, Sequence). Each table is instatiated in the appropriate module file
+  (e.g. subset.c) using two static variables: an int which contains the length
+  of the table, and an array of slot pointers as the table. Initially the
+  tables are empty (0 & NULL). It is important to understand that the tables
+  are not arrays of Slots, but arrays of pointers to the slot structs. This
+  allows us to resize the tables w/o having to realloc the slots structs.
+
+  <p>
+  (Be aware that in this document there are two uses of "Slot". One means "the
+  entry in the table array", the other means "the data struct containing an
+  object's data". We'll try to use "slot struct" in the later case.)
+
+  <p>
+  NULL type Handles, e.g., FC_NULL_SUBSET (defined in base.c), are provided as
+  shorthand for specifying invalid or nonexistent objects (since we can't use
+  NULL directly). They have dummy values for the slotID (-1) and uID (-1). 
+
+  <p>
+  Checking that an instantiation of an object is valid (e.g., fc_isSubsetValid)
+  is a check that the uID and the slotID in the Handle actually correspond
+  to the Slot stored in the Table at that slot index. The Slot has a Header
+  (FC_SlotHeader) which contains (in part) the uID, the slotID, and the
+  name of the entity described by the slot. The comparison is thus done between
+  values in the Handle and the SlotHeader.
+
+  <p>
+  There is valid, and then there is valid. fc_isTYPEValid() only tests that a
+  Handle can be used to look up an existing object. Objects are created in
+  multiple steps an may not always be "consistent". For example, to make a
+  variable you first call fc_createVariable() and then fc_setVariableData().
+  After the first call, fc_isVariableValid() will return true, but the variable
+  is not really set up--it has been initialized with zeros--and doesn't contain
+  data until the second call. Meshes required two fc_setX() calls to be
+  considered set up--on to set the coords and one to set the conns. Subsets are
+  a special case in that they can be considered set up after the initial call
+  because we allow "empty" subsets but not empty meshes and vars.  We are still
+  figuring out when it is appropriate to use empty subsets and when to use
+  FC_NULL_SUBSET. (Datasets are also completely set up after the create call,
+  but very, very boring.)
+
+  <p>
+  Because the first member of each type of slot is the same type
+  (_FC_TableHeader), generic operations can be performed by casting tables to
+  the type (_FC_TableHeader**). Generic table operations are implemented in the
+  table module (table.c). When a new Slot struct is requested, a table is
+  searched for an empty slot (NULL entry in the array). If an empty slot is
+  found, a new Slot struct is allocated, and the pointer to it is stored in
+  that array entry. If an empty slot is not found, the table is first grown (by
+  a factor of two), with the new slots being set to NULL.  When an object is
+  deleted, the slot struct for that object is freed and the table entry is set
+  back to NULL.
+
+
+  <p>
+  <b>Methods involved in the data object management include:</b>
+  <ul>
+  <li>  create/release/delete of the type
+  <li>  getnew/init/release/clear/delete of the type Slot
+  <li>  init/clear the SlotHeader
+  </ul>
+
+  <p>
+  Examples applied to the subset.:<br>
+  <ul>
+  <li> <i> Creating an instantiation of a type, for instance a subset: </i>
+  <ol>
+      <li>  getNewSubSlot:
+      <ol>
+          <li>  getNewSlot (generic call to the Table):
+	  <ol>  
+	      <li>  gets or makes an open slot in the table
+	      <li>  initSlotHeader:  (generic call to the Table)
+	      <ol>
+		  <li>  sets the name and committed to NULL or 0 (does not change the slotID or UID)
+	      </ol>	  
+	      <li>  separately sets the id and uid to the correct vals
+          </ol>
+	  <li>  initSubSlot (specific initializations for the type):
+	  <ol>
+	      <li>  initSlotHeader: (generic call to the Table)
+	      <ol>
+		  <li>  sets the name and committed to NULL or 0 (does not change the slotID or UID)
+	      </ol>	  
+	      <li>  sets any type specific related associations to NULL or 0
+           </ol>
+       </ol>
+   </ol>
+   <br>
+
+   <li> <i> Releasing a subset (removes the big data, not the subset itself): </i>
+   <ol>
+       <li>  explicitly removes the big data (subset members)
+   </ol>    
+   <br>
+
+   <li> <i> Deleting a subset: </i>
+   <ol>
+      <li> removes (some) type specific assocations (not big data)
+      <li> deleteSubsetSlot:
+      <ol>
+          <li>  clearSubSlot:
+          <ol>
+             <li> releaseSubSlot (free big data)
+	     <li> clearSlotHeader (generic call to the Table):
+	     <ol>
+	        <li>  frees name
+		<li>  initSlotHeader (generic call to the Table):
+		<ol>
+		  <li>  sets the name and committed to NULL or 0 (does not change the slotID or UID)
+                </ol> 
+		<li>  set uiD = -1; (note: does not set the slot index to -1)
+	     </ol>	
+             <li> initSubSlot:
+             <ol>   
+		 <li> initSlotHeader (generic call to the Table):
+                 <ol>
+                     <li>  sets the name and committed to NULL or 0 (does not change the slotID or UID)
+		 </ol>	 
+                 <li>  sets any type specific related associations to NULL or 0  
+             </ol>
+         </ol> 
+         <li> deleteSlot (generic call to the Table):
+	 <ol>
+            <li>  frees the allocated slot and adds it to available slot list
+         </ol> 
+      </ol> 
+   </ol>
+
+   </ul>
+
+   <p>
+   Other bits of interest. Type specific information contained in the slot can
+   be things like parents or children. For instance, VarSlots have space for both the
+   owning mesh and dataset. For GlobalVariables, the mesh field is set to FC_NULL_MESH.
+
+
+  <!--  ------------------------------------------------  -->
+  <a name="Mesh">  <h3> <hr> Data Structures of the Mesh <hr> </h3></a>
+  <!--  ------------------------------------------------  -->
+
+  <p>
+  <b>Types</b><br>
+  FC_ElementTypes describe the elements in a mesh.
+  Given an FC_ElementType, the number of Verticies, number of edges, number of faces,
+  topological dimension, and its corresponding FaceType are established (and there are
+  calls to get these in base.c).
+  <p>
+  FC_AssociationTypes are used to describe the association of items with
+  a mesh. For example a data field may be associated with the elements
+  (i.e, able to vary from element to element), or with an entire mesh,
+  or with all meshes in a dataset. Variables and Subsets have Association
+  Types. Non-global variables and subsets cannot have Association Type
+  FC_AT_WHOLE_DATASET. Global variables can only have association
+  FC_AT_WHOLE_DATASET -- that means that Global Variables can only
+  be single vals; you cannot have, for instance, a global variable
+  that is a data field, varying from element to element in a mesh, with
+  the same across all meshes, defined only once as a global variable.
+
+  <p>
+  <b>Mesh Struct</b><br>
+  <i>Intro</i></br>
+  The mesh is a mighty entity. Generally you could specify a mesh by the
+  coordinates of its verticies, their connectivities, and which of those verticies
+  are part of which elements in the mesh. Other things, such as faces and edges
+  are then implied. Thus the FCLib Mesh struct object consists of:
+  <ul>
+  <li> Metadata consisting of:
+  <ul> 
+  <li> things such as the topological dimention of the mesh the num of elems etc
+  </li>
+  <li> arrays of slot ids for owned entities such as subsets, variables etc
+  </li>
+  </ul>
+  </li>
+  <li> Big Data which is provided by the file defining the mesh:
+  <ul>
+  <li>the coordinate array
+  </li>
+  <li>elem to vertex connectivity
+  </li>
+  </ul>
+  <li> Big Data which is built when needed - such as the edge, face, and neighbor info.
+  </li>
+  </ul>
+  This distinction in the types of Big Data is important for at least the following reasons,
+  which will be discussed in more detail below, but if I dont scare you with them now,
+  you won't read any further (Ok, really I'm just scared):
+  <ul>
+  <li> You have to be careful how you add data to the mesh (in, say, a reader, in, say,
+  things like setMeshElementConns) to be
+  sure that in case additional data needs to be built, that it will be built properly.
+  The FCLib Mesh API is set up to ensure that the right building will occur and if
+  you bypass this to add things into the mesh struct directly you may bypass this
+  building.
+  </li>
+  <li> Access to and writeout of the built data may behave differently than that of
+  other data, in order to not waste space on things that you may not need. 
+  Some interfaces to that data are
+  optimized so that things are not rebuilt, and some things that are built are not written out
+  should you want to write to a file, because they can just be built again.
+  </li>
+  </ul>
+
+  <p>
+  <i>Built data</i><br>
+  In the meshP.h file the built data is divided by comments into three types:
+  <ul> 
+  <li>downward connectivities - these refer to parent-to-child type relationships, such as:
+  given a face, what are all its verticies, or given an element, what are the IDs of it's edges. 
+  These are stored as int arrays (there is a fixed number of children per parent for a given
+  topology so they can just be put into a fix length array).
+  In downward connectivities the order of the child items (for a given parent) is important.
+  </li>
+  <li>upward connectivities - these refer to child-to-parent type relationships, such as:
+  given a face, what are its parent elem IDs? Since the number of these can vary per
+  child, for each type of relationship there is an array that contains the number of
+  parents for each particular child (e.g., num elems for face 0, num elems for face 1, etc)
+  and an additional doubly indexed array that contains the actual ID. In upward connectivities,
+  the ordering of the parent items (for a given child) is arbitrary.
+  </li>
+  <li>neighbors - these are peer relationships, such as the elems that are neighbors of an elem.
+  The definition of these varies dependng on the level of cnnectivity desired - for instance,
+  the number of neighboring elems connected by a face vs the number of neighboring elems
+  connected by a vertex. As in the upward connectivities, these vary for each item,
+  and therefore both an array of the number of neighbors for each case and a doubly indexed
+  array containing the actual ids is kept.
+  </li>
+  </ul>
+  Once upon a time, a number of different relationships for items were kept
+  together in structs, however this was dropped in favor of the arrays primarily becuase
+  it allows the writing of a smaller set of operations that only need to work on arrays and
+  thus can be passed any of a number of the different array options. 
+
+  <p>
+  <i>Building methods</i><br>
+  There are 5 helper functions that cause this building when needed.
+  <ul>
+  <li> _fc_buildEdgeConns(FC_Mesh mesh) </li>
+  <li> _fc_buildFaceConns(FC_Mesh mesh) </li>
+  <li> _fc_buildParents(FC_Mesh mesh, FC_AssociationType childType,
+        FC_AssociationType parentType) </li>
+  <li> _fc_buildMeshVertexNeighborsViaEdge(FC_Mesh mesh)</li>
+  <li> _fc_buildMeshElementNeighborsViaEntity(FC_Mesh mesh,
+                      FC_AssociationType sharedType)</li>
+  </ul>
+  <p>
+  When you ask for info at a higher level that needs this info, it will call whatever
+  helper functions it needs to make that data. These will additionally make any other
+  information that it is convenient to create simultaneously.
+
+  <p>
+  <i>Examples:</i><br>
+  <ul>
+  <li><i>buildEdgeConns</i><br> 
+  <ol>
+  <li> VertexIDPair maps used to establish ordering and traversal of edges. 
+  Once you establish mapping of global IDs to the local numbering, then with
+  the map can build the edges properly since this establishes the edges and
+  the ordering in the local numbering.
+  </li>
+  <li> Interim structure is an array of FC_SortedBlobArrays, one for each vertex. 
+  This is used to store the edges. The edges are stored in the BlobArray corresponding
+  to the lowest numbered index of the two participating in the edge. The edges are numbered
+  by the order into which they are inserted into the array of arrays.
+  </li>
+  <li> An additional structure (int array) is simultaneously built to store the edges 
+  (specified by the number given above) pertaining to each element.
+  </li>
+  <li> The array of SortedBlobArrays is then converted into its final data
+  structure (int array) for the vertex to edge relationships.
+  </ol>
+  <p>
+  In this case the edgeConns (edge->vertex) and the elemToEdgeConnectivitity (elem->edge)
+  are both built. There are 4 possbile big data things for connectivity for edges, the two
+  downward ones we have just built as well as the two upward ones (vert->edge and edge->elem)
+  which we have not.
+  </li>
+  <li><i>buildParents</i><br>
+  This is a general method in which you specify the child and parent type and it builds the
+  arrays that hold the parent IDs for a given child/parent combination.
+  <p>
+  If, for example, the child is FC_AT_EDGE and the parent is FC_AT_ELEMENT, the
+  elem to edge connectivity (parent->child) is needed and is created (via buildEdgeConns)
+  if needed. This single array is then essentially inverted to build a set of arrays,
+  one for each child. In the interim building the structures used are SortedIntArrays.
+  These are then converted to normal int arrays and size vals to enable the final 
+  data structure as an array of the number of parents for each child and a doubly
+  indexed array of the actual parent IDs per child.
+  </li>
+  <li><i>buildMeshElementNeighborsViaEntity</i><br>
+  Builds element neighbor arrays that store the elements that are neighbors
+  based on their sharing the entity of the specified type (e.g, elements
+  that are neighbors because they share an edge).
+  <p>
+  First gets the elem->shared_type connectivity and the shared_type->elem 
+  connectivity, creating them if needed (e.g., elem->edge and edge->elem arrays).
+  Note that these are parent->child and child->parent relationships where the parent
+  is element type. Builds interim SortedIntArrays of neighboring elems by iterating
+  through the elem->child list to select children and then cross-referencing those
+  children in the child->parent list to determine which elems share that child.
+  As in build parents, the interim arrays for each child are converted into
+  the final data structures of an array of the number of neighboring elems based
+  on each shared entity and a doubly indexed array of the actual elem IDs
+  per entity.
+  </li>
+  </ul>
+
+  <p>
+  <b>Face orients</b><br>
+  By definition, the verticies of the faces of an element
+  are ordered (counter clockwise) so that the face's normal points
+  out of the element. However, there is a global structure with
+  the verticies for each face in some order, which will 
+  be counter clockwise for some element, but will of necessity
+  be clockwise for the element on the other side of that face.
+  Therefore an orientation array is kept for each face of each
+  element that keeps track if the verticies' ordering as
+  it is kept in the global structure is correct (counter
+  clockwise) for that face for that element or if the ordering
+  needs to be inverted.
+  
+  <p>
+  <a name="ReleasingMesh"> <b>Releasing the Mesh</b><br> </a>
+  ReleaseMesh will release all of the built data...to a certain point.
+  Parents and neighbor can be released fine. We currently make the edges
+  and faces and these are released. Release also releases all of the big data. 
+  Therefore, if you want to keep only
+  part (if running low on space), you actually have to release it all and rebuild the
+  part you want. We would like to have the choice to keep what you want, this might be
+  an option available to developers only. See also 
+  <a href="#LazyLoading">Lazy loading</a> for a similiar concept on releasing
+  big data values that exist in the file.
+  <p>
+  
+  <!--  ------------------------------------------------  -->
+  <a name="FileIO"> <h3> <hr> File I/O  <hr> </h3> </a>
+  <!--  ------------------------------------------------  -->
+  <p>
+  There is a generic FileIO API, that calls within it fileIO
+  modules for each specific file type. These fileio modules are
+  responsible for reading in, building, and writing out the mesh,
+  sequence, variable, subset, etc data. 
+  <p>
+  <b> Lazy loading and releasing of big data </b><br>
+  Often the data files have much data that is not pertainent to
+  the user's intended characterization. For this reason, one is encouraged
+  to implement "lazy loading" wherever possible. That is, upon determining
+  the existence of a variable in a data file, one can build the variable's
+  data structure, but not read in the actual data values until that data
+  is requested. For example, in the exodusio module, seq variable metadata and
+  uniquely identifying exodus variable identification are read in in the
+  initial load, but the data field remains NULL. Upon request of a seq variable,
+  the data field is checked and, if NULL, only then is the actual data
+  read in.
+  <p>
+  Lazy loading also allows one to selectively release big data that exists in the
+  data file in order to free up memory, since the data can always be reloaded
+  from the file when necessary. This is similiar to the concept of releasing
+  built data as discussed in <a href="#ReleasingMesh">Releasing the Mesh</a>
+  although there the data is initially built and then rebuilt rather than loaded in 
+  and re-loaded in from the file. In order to allow releasing and re-loading of
+  the data without loss of intermediate changes, changes to the data values from
+  the file's data vaules are not allowed. The "committed" flag exists to keep
+  track of such data structures. When a data item is loaded from a file and its
+  metadata readin, the committed flag should be set to indicate if <i>both</i>
+  the variable data exists on the disk (that is, is committed to the disk) and
+  is able to be lazily loaded; it should be set to zero otherwise, and it is
+  by default. Methods that allow changes to a data structure's values (e.g,
+  adding subset members) must then explictly check to see if the data structure
+  is committed before performing the change. Functions that release structures
+  release only the committed structures.
+  <p>
+  Note that only lazily loadable data can have the committed flag set, since it
+  is otherwise not reloadable. For example, in the exoudus module, data values for
+  nodesets, element sets, mesh int variables and global sequence variables are 
+  currently read in during the load and are not lazily loadable. Thus their
+  committed flag is not set and they will not be released upon a release call.
+  A side effect of this is that these structures values are then allowed to
+  change from their values in the file. You may prefer to think of the
+  "committed" flag as a "reloadble" flag. If you want to change the values
+  of a committed structure, you can make a new structure and copy the
+  values of the original structure over to the new structure, and then alter
+  the new item's values.
+  <p>
+  <!--  ------------------------------------------------  -->
+  <a name="FileFormats">  <h3> <hr> Interesting Things About File formats We Use <hr> </h3> </a>
+  <!--  ------------------------------------------------  -->
+  <b> LS-DYNA, Exodus, Sierra, NetCDF, oh my!</b> <br>
+  NetCDF is a generic file format. Exodus is a higher
+  level interface built on top of NetCDF, which interpret the data
+  into a "meshes and variables" data model. It is not required to
+  use or know anything about Exodus or NetCDF if you only want to
+  build data within your code and not write it out to any file format.
+  Otherwise, currently, we only read in and write out Exodus (SAF has been
+  deprecated), with some restrictions. We also read in (but do not
+  write out) certain types of LSDYNA files, withe even more restrictions.
+
+  <p>
+  <i>LS-DYNA</i><br> 
+  LS-DYNA is a mechanics simulation code, produced by the company LSTC,
+  that writes out data in its own binary format that we refer
+  to as the LS-DYNA format. LS-DYNA actually writes a lot of files of which we only
+  support the d3plot files. LS-DYNA generally writes out one d3plot file 
+  for all processors per timestep (though it could do multiple
+  timesteps in a file as well). The first one also has the geometry. 
+  FCLib currently only reads the LS-DYNA d3plot files, although we
+  have requests to write these files as well so that our LS-DYNA costumers can
+  view FCLib produced files in the LS-DYNA visualization tool: LS-PrePost
+  We also have requests to read and write the keyword file format. Like a
+  Sierra input deck, the keyword file contains simulation directions. However,
+  it is also the only source for nodeset and side set information.
+
+  <p>
+  <i>Exodus</i><br>
+  Exodus files are usually written out per processor
+  but SierraConcat merges them into a single file. FCLib reads and writes
+  Exodus files. 
+  <p>
+
+  <p>
+  <i>Sierra module</i><br>
+  The Sierra module in FCLib has nothing to do with LSDYNA or Exodus. It includes
+  parsers for the Sierra input deck and to pull out info for the old style 
+  spotweld analysis (tool = analyzeSpotwelds). The old spot welds were modeled
+  as a single point attached to a surface. Now spotweld failure is modeled
+  by watching for element death in screws and bolts (tool = screwBreaks).
+
+  <p>
+  <b>Issues</b>
+  <ul>
+  <li><i>Global vs Local Numbering</i><br>
+  A big design issue we have is that Exodus and LS-DYNA have a global
+  node array and element blocks refer to these global verticies. FCLib was
+  designed to be able to look at single meshes, and it renumbers
+  the nodes local to each mesh. Nodes used in multiple meshes are
+  thus duplicated and they will not be numbered the same (as each other
+  or as the original numbering). Therefore the
+  Exodus (or LS-DYNA) numbering and the FCLib numbering will be different
+  and you can't reliably compare numbers written out by FCLib with numbers
+  in the
+  original files. This also means that you can't compare to numbers from
+  other tools, say Ensight, which are using the original dataset.
+  <p>
+  One option for handling this is to load up the dataset in FCLib,
+  write it out with FCLib, and then use the rewritten dataset.
+  After that, rewriting the dataset should not change numbers if the meshes 
+  don't change. FCConvert is a tool that can help one can convert say from 
+  your original Exodus file to the Exodus file that FCLib will write after
+  converting the original file data into FCLib's data structures,
+  getting the renumbering that way.
+    </li>
+    <p> 
+  <li><i>Block and set name support.</i><br>
+  Dyna2names.pl converts the LS-DYNA keywords file (.k file) to a .names file 
+  which FCLib parses rather than reading them from any LS-DYNA files directly. It 
+  supports element block names, sideset names, and nodeset names only. This
+  is a historical artifact as FCLib created the .names file as a
+  convention first for Exodus files before Exodus stored the names of element
+  blocks. Since then, Exodus has provided name support and so the
+  reading and writing of .names files has been removed from the
+  exodusio module.
+  </li>
+  <p>
+  <li><i>Sequence support</i><br>
+  Exodus and LS-DYNA only support 1 sequence: time. 
+  FCLib discards all but the first sequence when writing Exodus files.
+  There is type of Exodus file call a history
+  file (.h) that can be written out with more frequent info, so perhaps there
+  is some way to use this for additional sequence info, but this is sketchy
+  conjecture.
+  </li>
+  <p>
+  <li><i>Data types</i><br>
+  Exodus does not support multiple data types and everything gets munged to doubles, 
+  including chars.
+  </li>
+  <p>
+  <li><i>Multi component variables</i><br>
+  Exodus only stores single component variables and relies on naming conventions (endings x,y,z
+  for vecotrs, xx,yy,xy for tensors) for the consumer. The Exodus reader reads in as
+  single components. Our other readers package vectors into a multicomponent var. All
+  the routines expect things like the displacement to be multicomponent. There are
+  functions to discover and merge variables into multicomponent data sturctures.
+  </li>
+  <p>
+  <li><i>Exodus General data support issues</i><br>
+  There are some concepts that Exodus does not support, or previously
+  did not support, but are supporting in upcoming versions. This affects
+  which concepts can be created in an FCLib dataset, but may be subsequently
+  dropped when the dataset is written out in a file format. 
+
+  <ul>
+    <li><i>Edge and face support</i><br>
+      Exodus will be supporting explicit definitions of faces and edges and their
+      relationships to each other and to elements. We currently do not
+      support this, but stick with the older convention of sidesets.
+      A sideset is a set faces on a 3D mesh or edges on a 2D mesh, which could be used
+      to store distribution factors and are stored them as a global element/local side ID
+      pair. 
+      </li>
+    <li><i>Blocks and Subsets</i><br>
+      Relatedly, Exodus will be supporting nearly all types of blocks and subsets, and
+      attributes and results upon them. We currently support only element blocks. We read
+      in and write out only node and element sets and sidesets (for faces and edges). </li>
+    <li><i>Seq vars vs normal vars</i><br>
+      We read in and write out node and element attributes as non-sequence
+      variables and node and element results as sequence variables. Note that
+      for vertex assocations, these are exodus nodal results and attributes which means that
+      they are defined for all nodes (filled in with 0 for any nodes in any element
+      block that does not define that variable).
+      <p>
+      <i>FCLib variable concepts and Exodus support</i>
+      <p>
+  <TABLE BORDER="3" CELLSPACING="1" CELLPADDING="1">
+  <TR> <TH> FCLib Attribute Type      <TH> Non-Seq Var          <TH> Seq Var</TH> </TR>
+  <TR> <TD> FC_AT_WHOLE_DATASET </TD> <TD bgcolor="#FF0000"> N                </TD> <TD bgcolor="#00FF00"> Y  </TD> </TR>
+  <TR> <TD> FC_AT_WHOLE_MESH    </TD> <TD> N (except DT_INT)                  </TD> <TD bgcolor="#FF0000"> N  </TD> </TR>
+  <TR> <TD> FC_AT_VERTEX        </TD> <TD bgcolor="#FFFF00"> Y                </TD> <TD bgcolor="#00FF00"> Y  </TD> </TR>
+  <TR> <TD> FC_AT_EDGE          </TD> <TD bgcolor="#FFFF00"> N                </TD> <TD bgcolor="#00FF00"> N </TD> </TR>
+  <TR> <TD> FC_AT_FACE          </TD> <TD bgcolor="#FFFF00"> N                </TD> <TD bgcolor="#00FF00"> N </TD> </TR>
+  <TR> <TD> FC_AT_ELEMENT       </TD> <TD bgcolor="#FFFF00"> Y                </TD> <TD bgcolor="#00FF00"> Y  </TD> </TR>
+  </TABLE>
+  
+    <p>
+  The table shows the mapping between FCLib variable concepts and those
+  of Exodus. If Exodus concept is currently read in or written out
+  it is indicated by "Y"; if not, by "N". Those FCLib vars that can 
+  eventually be supported as Exodus vars (results) are
+  colored in green.  Those that can be supported by using an Exodus concept other than
+  variables are shown in yellow. Those that cannot be supported at all are shown in red.
+  The remaining block (white) is described
+  in more detail below. 
+  <p>
+  Exodus only has variable support for sequence variables. All of the FCLib
+  sequence variables can be directly mapped into Exodus variables, with the
+  exception of FC_AT_WHOLE_MESH. These are shown in green and red,
+  respectively. FCLib's FC_AT_WHOLE_DATASET is an Exodus
+  global seq var.
+  <p>
+  Exodus does not have support for the corresponding non-seq vars,
+  however some of these can be handled by other means. We support
+  nodal and element attributes currently. FC_AT_WHOLE_DATASET non-seq
+  cannot be supported, becuase there is no global non-seq var in
+  Exodus, and it is thus colored red.
+  <p>
+  The FC_AT_MESH non-seq variables cannot be supported with the
+  exception of the those of datatype FC_DT_INT. Support for that
+  case is currently implemented by the Exodus "property".
+  </li>
+   </ul>
+
+  </ul>
+  <p>
+  <b>Useful tools for data in various formats</b>
+  <ul>
+  <li>dyna2names - makes .names file from dyna .k file </li>
+  <li>fcdump - reads any file FCLib can read (Exodus, LS-DYNA) and
+  prints it out as FCLib interprets the dataset (e.g., what are meshes,
+  sets etc)</li>
+  <li>exodump - prints out things that are in an Exodus file with the
+  interpretation that Exodus puts on them. Note that
+  there is no lsdyandump as LS-DYNA has no higher level API.
+  <li>sierradump - dumps info from the Sierra input deck. Does not read
+  and keep everything.</li>
+  <li> partialdump (in Wendy's sandbox) - this does a partial writeout
+  of some LS-DYNA data (1st, 2nd, and last vals) for testing.
+  <li>fc2ensight - converts a dataset to the Ensight Gold case file format.
+     This was used when we wanted to view SAF files written by FCLib since
+     Ensight did not read FCLib SAF files. However, using fcconvert to
+     convert files to Exodus is now used and this tool is probably out of date.
+  <li>fcconvert - converts files form one type to another (e.g., LS-DYNA to
+  Exodus) including things like Exodus->Exodus for the conversion
+  of node numbers as described above. Things that are supported in
+  one file format and not in other obviously wont be handled and you
+  may warnings to that effect.</li>
+  </ul> 
+
+  <p>
+  <!--  ------------------------------------------------  -->
+  <a name="FT">  <h3> <hr> Feature Tracking <hr> </h3> </a>
+  <!--  ------------------------------------------------  -->
+  A Region of Interest (ROI) is a struct with a subset that exists at a single timestep
+  comprised of the entities that make up the ROI. A Feature is a struct with
+  array of these subsets, one for each timestep. Features in their
+  struct forms, while in the public feature.h file, are really not intended to be
+  accessed by users. Instead information about features is asked for via the FeatureGroup
+  struct which is a container for the results of the feature tracking as a whole. This
+  struct contains arrays of pointers to the Features structs and ROI structs. Using
+  a feature ID, info about specific features can be obtained.
+  <p>
+  Simple examples of user code that performs feature tracking exist in Wendy's Sandbox
+  in the ida2005 directory. The Feature Tracking process is really comprised of two
+  conceptual pieces:
+  <ul>
+  <li> the detection of the Regions of Interest</li>
+  <li> the tracking of the ROIs to determine the resultant features (which includes
+       the evolution of the ROIs over time, including their parent/child relationships)</li>
+  </ul>
+  The first of these pieces is entirely up to the user - in Wendy's sample code this consists
+  of getting at every timestep a threshold subset and then segmenting it in order to determine
+  the distinct ROI. The second piece (trackstep) can be user customized, but a default option is
+  available. The ROIs are considered to be the same ROI evolving in time, or a parent-child
+  split of a ROI based on upon the values of "overlap" calculated by an overlap function and
+  stored in an overlap function. In the most straightforward case, this is geographical overlap, and
+  indeed that is the default case. However the user can pass in an overlap function that can
+  be used in the calculation instead.
+  <p>
+  Feature graphs can be written out and viewed with graphviz.
+  
+
+  <!--  ------------------------------------------------  -->
+  <a name="Testing">  <h3> <hr> Testing <hr> </h3></a>
+  <!--  ------------------------------------------------  -->
+
+  <p>
+  <b>Tests</b><br>
+  Includes regression and unittests. Mostly unittests
+  are for the modules and regression testing is for tools output.
+  There are 2 sets of regression tests and 2 sets of
+  unittests. Regtest and check are freestanding or use the data in the
+  FCLib/data dir. Regtest2 and check2 run on data on FCLib-data which
+  is only available to the fclib developers. Check is the tool used for
+  the unittests and is in util and is actaully configured and built for
+  the testing. Checkall.c is the engine behind both check and check2. 
+  <p>
+
+  <p>
+  <b>Local data making apparatus</b><br>
+  Data is made in data dir for testing. Mostly for regtest which
+  is testing of commandline tools which require file input. In some cases
+  these are used in the unittesting as well because it was easy to
+  use them instead of creating data. We are working to
+  remove these in favor of making the data in the unittests themselves,
+  but this is not complete. For ease in this, in the Mesh module is a 
+  nice function for making a simple hex mesh that is often used for
+  testing in library.
+  <p>
+  data/elem/vert files are needed for building the dataset. Data is a list
+  of data fields and values. Verts are vertex coordinates. Elems are vertex
+  ids making up the elems. Some files are there, some are built. Some data
+  files are built via data_generator. Mesh generator makes vertex and elem
+  files for each cell type. Some specialty cases (like the screw are
+  separate). Dataset_generator then makes single and multiple mesh datasets,
+  given data/elem/vert files.
+  <p>
+
+  <b>Automated regular testing </b><br>
+  Script for nightly checking called FCLib-autotest is located in util
+  in the distribution. Upon first installation, the user can
+  set things up to run this script nightly as a cron job. In the file
+  one can define the location of where a test installation of
+  the code will be. The script will then update that installation,
+  build the library, test, and run valgrind on it. Progress logs 
+  are created and compared to the logs of the previous run of the script. 
+  Results can be emailed to a list of users. 
+  <p>
+  Variables for your set up at defined at the top of the file.
+  In most cases, these can be defined in terms of the location
+  of the test installation. In some cases, there are references
+  that include paths to executables (such as valgrind), location
+  of the FCLib-data directory for the second set of regression and
+  unittests, some paths for Exodus/etc, etc. 
+
+  <p>
+  <b>Supporting tools</b><br>
+  These supporting tools are necessary for complete building and testing
+  of FCLib. Installation instructions for most things can be found in
+  wendy's notes in the tarball dirs.
+  <ul>
+  <li>Exodus & NetCDF (bundle) - if you just get the Exodus from
+      sourceforge this is not not enough, you need to get NetCDF and make
+      some changes. Instead get the bundle. There are instructions in
+      the bundle for updating it for new releases. </li>
+  <li>graphviz - for feature tracking</li>
+  <li>html2text - some of the html pages (like INSTALL notes) are converted into text as well
+      for the release</li>
+  </ul>
+  <p>
+
+    
+</html>

@@ -1,0 +1,918 @@
+/*
+ * Copyright (2000) Sandia Corporation. Under the terms of Contract
+ * DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+ * certain rights in this software.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *   * Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *
+ *   * Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the
+ *     distribution.
+ *
+ *   * Neither the name of Sandia nor the names of any contributors may
+ *     be used to endorse or promote products derived from this software
+ *     without specific prior written permission.
+ *
+ *   * Modified source versions must be plainly marked as such, and must
+ *     not be misrepresented as being the original software.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+ * DAMAGE.
+ */
+
+/**  
+ * \file doxy_page_defs
+ * \brief Doxygen pages
+ *
+ * \description
+ *
+ *    Doxygen pages are collected here to force their ordering
+ *    in the documentation. (Note that if you want to have references to
+ *    other parts of the Doxygen documentation, you will need to write
+ *    within in a page. But, if you have a standalone document, it
+ *    may be better to write a html page and then include it in a page.)
+ *
+ * \modifications
+ *    - 9/01/04 WSK, moved page defines here from doxy_module_defs
+ *        and also moved contents of doxy_fc_comments_style.txt here.
+ *
+ * $Source: /usr/local/Repositories/fcdmf/fclib/doxyfiles/doxy_page_defs,v $
+ * $Revision: 1.22 $
+ * $Date: 2006/11/11 00:35:01 $
+ */
+
+//------------- Main page
+
+/**
+\mainpage  Feature Characterization Library
+
+<b>Copyright (2000) Sandia Corporation.</b> Under the terms of Contract
+DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+certain rights in this software. For full copyright text see 
+\ref copyright.
+
+\section QuickOverview Quick Overview
+
+The Feature Characterization Library (FCLib) is a toolkit for creating
+and applying feature characterizations to spatial-temporal datasets.
+Features are coherent structures, often called regions of interest, that 
+persist over time in a dataset. Some examples of features include:
+vertex tubes in fluid dynamical systems, failure zones in mechanical systems,
+and hot spots in chemical systems. Feature characterization is the analysis
+of these features.
+
+FCLib is the first product of the FCDMF project (part of the
+ASC Data Discovery Project) which is researching feature extraction and
+characterization in large scale scientific datasets.
+
+<a href="overview_page.html">(More overview ...)</a>
+
+\section MoreDocumentation Documentation
+  - \ref install_page
+  - \ref releaseNotes_page
+  - \ref navigation_page
+  - \ref misc_page
+  - Example codes with annotations in \ref Examples
+  - Developers - see "for developers" pages in 
+    <a href="pages.html">Related Pages</a>
+
+\section Contacts Contacts
+  - FCLib home page - <a target="_top" href="http://fclib.ca.sandia.gov">
+    http://fclib.ca.sandia.gov</a>
+  - FCLib help - <a href=mailto:fclib-help@ca.sandia.gov>
+    fclib-help@ca.sandia.gov</a>
+  - FCLib feedback: Please provide feedback to help us improve the FCLib 
+    experience - <a href=mailto:fclib-help@ca.sandia.gov>fclib-help@ca.sandia.gov</a>
+
+\section People People
+
+\subsection CurrentDevelopers Current Developers
+  - Craig Ulmer (SNL)
+  - Ann Gentile (SNL)
+
+\subsection PastDevelopers Past Developers
+  - Wendy (Koegler) Doyle (ex SNL)	
+  - Renata McCoy (SNL)
+  - Nancy S. Collins (CU Boulder) - Pre-FCLib
+
+\subsection Bosses Acknowledgments
+  - W. Philip Kegelmeyer (SNL) - Requirements design
+  - Stephanie Boyles (CU Boulder) - Pre-FCLib contributer
+  - Andre Smirnov (CU Boulder) - Pre-FCLib contributer
+  - Natalie Rooney  (CU Boulder) - Pre-FCLib contributer
+*/
+
+//------------- Copyright page
+
+/**
+
+\page copyright FCLib Copyright
+
+FCLib is Open Source Software (OSS) available under the following 
+BSD-like license:
+
+<hr>
+
+Copyright (2000) Sandia Corporation. Under the terms of Contract
+DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+certain rights in this software.
+ 
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+ 
+  - Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+
+  - Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the
+    distribution.
+
+  - Neither the name of Sandia nor the names of any contributors may
+    be used to endorse or promote products derived from this software
+    without specific prior written permission.
+  
+  - Modified source versions must be plainly marked as such, and must
+    not be misrepresented as being the original software.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR CONTRIBUTORS BE LIABLE FOR 
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH 
+DAMAGE.
+
+*/
+
+//------------- Overview page (convert from html file)
+
+/**
+\page overview_page   FCLib Overview
+\htmlinclude FCLib_characterizations.html
+*/
+
+//------------- Manual navigation page
+
+/**
+\page navigation_page Getting Started with This Manual
+
+The purpose of this page is to explain the overall organization of this
+manual so that the user can find the information that he or she is 
+looking for. (Not what you were looking for? See also \ref MoreDocumentation.)
+
+\section ManualTOC Table of Contents:
+
+   - \ref AboutDoxygen
+   - \ref DoxygenGuide
+      - \ref HeaderSideBar
+      - \ref MoreSideBar
+   - \ref FCLibNavigation
+      - \ref DoxygenModules
+      - \ref TopLevelModules
+      - \ref APIModules
+      - \ref ModulesAndSideBar
+
+\section AboutDoxygen About Doxygen
+
+This manual was generated using <a
+href=http://www.stack.nl/~dimitri/doxygen/index.html>Doxygen</a> which
+automates creating documentation from the source code and special comments
+inserted in the code. Because the documentation is spatially co-located with
+the objects it is documenting, it tends to be more up-to-date.  Unfortunately
+for new users, this mode of documentation tends to favor reference
+documentation with detailed documentation on each function or data
+structure--if you don't already know what you are looking for, it can be quite
+hard to find. Here we will give information that will hopefully let you
+navigate the documentation better and point to the places that are best for
+learning higher level information.
+
+\section DoxygenGuide General Doxygen Navigation
+
+Almost everything in the Doxygen documentation is linked to more documentation.
+Even the functions and variables in code snippets are linked to their
+documentation.  Sometimes you may have to follow a few links to get to the
+information that you want (this may be a side effect of Doxygen being designed
+for C++ and the library only being in C).
+
+\subsection HeaderSideBar Header and Side Bar
+
+The header is the purple band that you will find at the top of every page
+in this manual. The side bar is a separate frame at the left hand side of the
+window showing a list of document and book icons.  The header and the side bar
+give you access to the same information, but in a slightly different way.  The
+advantage of the side-bar is that you can view hierarchical organizations (see
+\ref MoreSideBar below).
+
+Below is a summary of the categories in the header. The most important one for
+learning about the library is <em>Modules</em> because it will allow you
+to navigate the documentation by subject. This will be the main subject of 
+section \ref FCLibNavigation below.
+
+<table>
+<tr>
+   <td>Main Page</td> 
+   <td> (Or "Feature Characterization Library" in the side bar) Will take you
+      to the main page of the manual. </td>
+</tr>
+<tr>
+   <td><strong>Modules</strong></td>
+   <td><strong>FCLib's organization of of the documentation by 
+       subject.</strong></td> 
+</tr>
+<tr>
+   <td>Data Structures</td>
+   <td>(Also "Alphabetical List" in the header) List of the data 
+       structures.</td>
+</tr>
+<tr>
+   <td>Data Fields</td> 
+   <td>List of data fields (e.g. struct members).</td>
+</tr> 
+<tr>
+   <td>Globals</td>
+   <td>List of everything except data structures and data fields (e.g. 
+       variables, functions, enum values, etc.).</td> 
+</tr>
+<tr>
+   <td>File List</td>
+   <td>List of all of the source files.</td>
+</tr>
+<tr>
+   <td>Related Pages</td>
+   <td>List of pages (like this one!) with information not directly related to
+       particular data structures or functions in the library.</td>
+</tr>
+</table>
+
+\subsection MoreSideBar More about the Side Bar
+
+The side bar shows the manual documentation in a hierarchical view.  The top
+level of the hierarchy is the same categories that are in the header.  Clicking
+the <em>name</em> of a page or book icon in the side bar will bring up the
+documentation for that entity in the main part of the window.  Clicking the
+book icon itself, or the little box to the left of it, will expand the view of
+the entities contained within that icon. Clicking a document icon does
+nothing--you need to click the name.
+
+\section FCLibNavigation FCLib Specific Doxygen Navigation
+
+\subsection DoxygenModules Modules
+
+For the Doxygen documentation, a <em>module</em> is a means of
+collecting related documentation into a single page and modules can be
+nested. FCLib also uses the term module to refer to related groupings of
+functions that are usually in the same file; there is a close, but not
+strict, correspondence between FCLib code modules and our Doxygen modules.
+
+We will use the side bar to walk through the organization of the FCLib's module
+documentation because you will be able to see the organization while
+staying on this page. However, we do not recommend using the side bar for
+exploring the documentation as there is more information if you go
+to the pages directly.
+
+Clicking "Modules" will take you to the top level Modules page where you can
+see the entire module hierarchy.  Clicking any module will take you to a page
+for the module where you can see the documentation for the module, links to
+modules within that module, and the documentation for data structures and
+routines. Child modules will also have a link back to their parent module.
+
+\subsection TopLevelModules Top Level Modules
+
+If you click the book icon named "Modules" it will expand to show you the top 
+level organization of the library:
+
+<table>
+<tr>
+   <td>\ref API</td> 
+   <td>Data structures and routines for building feature 
+       characterizations. </td>
+</tr>
+<tr>
+   <td>\ref Tools</td>
+   <td>Helper tools and a few pre-built feature characterization 
+       applications.</td> 
+</tr>
+<tr>
+   <td>\ref Examples</td>
+   <td>Example codes showing library usage.</td>
+</tr>
+</table>
+
+Now click the book icons next to "Command line tools" and "Examples" to open
+them. These two modules contain a module for each tool and example. 
+If you click text "Command line tools", you will get a page that lists the same
+tools you see in the side bar, and a brief explanation for each.
+
+\subsection APIModules API Modules
+
+The FCLib API is the core of the library and its modules are more deeply nested
+than either the tools or the examples. If you click the book icon next to
+"FCLib API" you will see a list of top level modules in the API. These modules
+can be categorized roughly as:
+
+<table>
+<tr>
+   <td>Data Manipulation</td> 
+   <td>\ref DataTypes, \ref SimpleDataObjects, \ref DataInterface </td>
+</tr>
+<tr>
+   <td>Support</td>
+   <td>\ref Utilities, \ref ErrorHandling</td> 
+</tr>
+<tr>
+   <td>Characterizations and Building Blocks</td>
+   <td>\ref GeometricRelations, \ref TopologyRelations, \ref VariableMath,
+       \ref Statistics, \ref Threshold, \ref Features, \ref FeatureTracking,
+       and more ...</td>
+<tr>
+   <td>Developer sandbox (play area)</td>
+   <td>\ref Custom</td>
+</tr>
+</table>
+
+For more details, go the the page for the \ref API module which will
+give a description for each of these modules. We recommend starting with \ref 
+DataInterface. Some of the child modules are labeled ("Private") which means 
+that we think the contents are not interesting to the general user.
+
+Have fun!
+
+\subsection ModulesAndSideBar (Aside: Modules and the Side Bar)
+
+Unlike the Modules page, which shows the hierarchical organization of only the
+modules, the side bar list goes to all the way down to individual data
+structures and functions. If you open the module <em>Simple Data Types</em>
+within <em>FCLib API</em> you will see book icons for <em>Typedefs</em>,
+<em>Enumerations</em>, and <em>Functions</em>--these are Doxygen's syntactic
+breakdown of the data structures and routines found within that module (other
+possible categories are <em>Data Structures</em>, <em>Defines</em>, and
+<em>Variables</em>). If you open these you will see the specific typedefs,
+enumerations, and functions within the module.
+
+*/
+
+//------------- FCLib misc page
+
+/**
+\page misc_page FCLib Coding Conventions & Tips
+
+This is a summary of general philosophy and coding tips for FCLib. Links
+are provided to more detailed information when available.
+
+- <strong>Compiling</strong>. To compile a program, you must include the
+appropriate headers (fc.h automatically includes all library headers for you)
+and you must link to the library (fclib.a). You will also need to link to
+external libraries for file IO. You can import the file Makefile.include from
+your FCLib build directory to use the same build parameters. Or you can
+use the tool \ref fcinfo to get the compiler flags.
+
+- <strong>API Modules</strong>. The API is split into categories called
+modules, each of which groups related data structures and functions into
+separate compiled units.  These are located in the modules directory and
+consist of one .c file and one or two .h files. For example, the geometric
+relations module consists of the files geom.c, geom.h and geomP.h. Module
+headers can be included separately if desired, but they have dependencies and
+must be included in the proper order--it's much easier to use the super header
+file, fc.h. FCLib modules correspond roughly with the Doxygen documentation
+modules (see \ref FCLibNavigation).
+
+- <strong>Public vs. Private</strong>. The API of each module is split into
+public and private functions. Private functions are generally either helpers
+for other functions, or are functions that are only expected to be used
+internally by the library. Private functions are not required to have the same
+level of error checking and robustness of public functions. To use private
+functions you must include the private headers, which have the same names as
+the public headers post-fixed with a 'P' (e.g. the public and private headers
+for the geometric relations module are geom.h and geomP.h, respectively). You
+can include all of the private headers using fcP.h.
+
+- <strong>Naming conventions</strong>. Data objects are prefixed with 'FC_' and
+functions are prefixed with 'fc_'. Private data objects and functions which are
+prefixed with '_FC_' and '_fc_', respectively.
+
+- <strong>Indexing conventions</strong>. All indices and IDs in the library are
+indexed from 0.
+
+- <strong>Function return values</strong>. Most library functions will return
+the enumerated type \ref FC_ReturnCode, which reports that the functions was
+successful (FC_SUCCESS = 0) or encodes the type of error that occured (< 0).  A
+few simple functions return useful values directly (e.g. fc_isDatasetValid()
+returns true (1) or false(0)).
+
+- <strong>Returning results from functions</strong>. In C, functions return a
+single value, which for most cases in the library will be an FC_ReturnCode
+value. This means that most of the "returned" results from FCLib functions are
+not returned at all, but are values assigned to arguments passed into the
+functions. For the remainder of the documentation, the use of "returned" will
+usually mean a value returned via the arguments of the function. In the Doxygen
+documentation, these arguments are labeled as "output" arguments and are
+usually a pointer to the memory where the caller would like the results to be
+stored.
+
+- <strong>Messages and Logging</strong>. Library routines can print
+errors to stderr or logging messages to stdout. This is set globally by
+a call to the library to set its verbosity level (see \ref Library).
+
+- <strong>Flushing IO</strong>. To get the most predictable IO behavior
+on all systems, we recommend calling fflush(NULL) after calling printf() or
+fprintf(). This forces a flush of all IO pipes. All fc_printXXX() functions
+should flush themselves.
+
+- <strong>Philosophy of simple data objects</strong>. The library has attempted
+to have the simplest interface possible by keeping the interface for the major
+data objects as abstract as possible. For example, there is only one kind of
+variable instead of different variable types for each type of mesh entity (e.g.
+node variables, element variables, etc.). The handling of different types of
+variables is hidden inside of the characterizations. This makes it simple for
+users to string together characterizations and characterization building blocks
+into useful applications. However, characterization developers have the
+responsibility of ensuring that their characterizations behave properly on all
+variable types.
+
+- <strong>Handles</strong>. The major data objects are hidden behind opaque
+handles; you cannot access their data directly and must go through library
+functions (see \ref Handles).
+
+- <strong>Meta-data vs Big Data</strong>. Meta-data is small data describing
+the data objects while big data is the big data making up the data objects
+(e.g. the number of vertices in a mesh is meta data while the coordinates of
+the vertices in the mesh are big data). When querying data objects, all data
+except big data is returned as a copy of the objects data. If any of this meta
+data happens to be an array, the users has received a dynamically allocated
+memory and is responsible for freeing it. When asking for big data, however,
+the user receives a pointer to the object's data and <strong>must not free
+it</strong>! The calls that return a pointer to big data are distinguished from
+regular data calls by being postfixed by 'Ptr'
+(e.g. fc_getMeshCoordsPtr()). When creating data objects, you have the choice
+of having the library copy the big data or giving responsibility for the big
+data to the data object. The functions that give the big data array to the
+library are also postfixed with 'Ptr' and if you use them, again you must not
+free the array.
+
+- <strong>Non-library-managed data objects</strong>. In addition to the major
+data objects that are managed by the library (FC_Dataset, FC_Sequence, FC_Mesh,
+FC_Subset, FC_Variable), there are auxiliary data objects including sorted int
+arrays (\ref FC_SortedIntArray), vertex bins for spatially sorting vertices 
+(\ref FC_VertexBin), feature groups for managing features 
+(\ref FC_FeatureGroup), etc. These objects are not automatically freed when 
+you close a dataset or the library. Instead, each has a separate fc_freeX() 
+routine.
+
+*/
+
+//------------- Install page (convert from html file)
+
+/**
+\page install_page   FCLib Installation Instructions
+\htmlinclude FCLib_installation.html
+*/
+
+//------------- Release notes page (convert from html file)
+
+/**
+\page releaseNotes_page   FCLib Release Notes
+\htmlinclude FCLib_releaseNotes.html
+*/
+
+//------------- Repository conventions page (convert from html file)
+
+/**
+\page repo_page   Repository Conventions (for developers)
+\htmlinclude FCLib_repositoryConventions.html
+*/
+
+//------------- Release How To page (convert from html file)
+
+/**
+\page releaseHowTo_page   Release "How To" (for developers)
+\htmlinclude FCLib_releaseHowTo.html
+*/
+
+//------------- Style for documentation
+
+/**
+\page dox_page  Conventions for Doxygen documentation (for developers)
+
+This page describes FCLib specific conventions for creating comments blocks
+that produce the Doxygen documentation.
+
+\section DoxTOC Table of Contents:
+
+ - \ref CommentBlocks
+ - \ref DoxygenCommands
+ - \ref FormattedLists
+ - \ref Modules
+ - \ref ExampleModule
+ - \ref ExampleFile
+ - \ref ExampleFunction
+ - \ref ExamplePage
+
+
+\section CommentBlocks Doxygen comment blocks
+
+Doxygen only examines comments that are marked as special. For example
+
+\verbatim
+/**  
+ * This is a Doxygen comment block because it starts with an
+ * an extra '*'.
+   '*'s on middle lines are optional.
+ */
+
+/* 
+ * This is a normal 
+ * comment block
+ */
+\endverbatim
+
+Doxygen comment blocks usually proceed the entity (function, struct, etc)
+that they define. An exception is for function arguments and members of
+structs and enums where a special character ('\<') is used to indicate that
+the comment has come after the entity.
+
+Here is an example of documentation for a struct
+
+\verbatim
+/** documentation for some_struct */
+struct { 
+   int member1; /**< documentation for member1 */
+   int member2; /**< documentation for member2 */
+} some_struct;
+\endverbatim
+
+
+\section DoxygenCommands Doxygen commands
+
+Doxygen commands start with a backslash ('\') and are used to specify extra
+formatting, what entities the documentation belongs to, etc. They can have
+a few different types of arguments:
+
+  - \<argument\> - the argument is is a single word 
+  - (argument) - the argument extends until the end of the line on
+    which it is found
+  - {argument} - the argument extends until the next paragraph. Paragraphs
+    are delimited by a blank line or by a section indicator.
+
+Note that many entities have a name (single token identifier) \b and a title
+(phrase used for display).
+
+We are using the following subset of Doxygen commands (these are the FCLib uses
+for these commands, see Doxygen's documentation for their general purpose
+usage):
+
+\verbatim
+\addtogroup <name> (title) - will define a group like \defgroup if <name>
+   has already been used, or will append this comment blocks documentation
+   to previous documentation for the group.
+
+\b <word> - displays word in bold. To put multiple words in bold use
+  <b>multiple words<\b>.
+
+\brief {brief description} - Provide one sentence summary of entity.
+
+\bug {bug description} - Comments about code that is suspect (will show up on 
+   current entity and on separate 'Bug List' Page).
+ 
+\defgroup <module_name> (module title) - defines a module (a module is a
+   user defined grouping of entities).
+
+\htmlinclude <file_name> - paste html file in as-is.
+
+\ingroup <module_name> - add entity to the module 
+
+\file <file_name> - Specify that block is documentation for a file.
+
+\page <page_name> (page_title) - indicates comment block that contains 
+  documentation not directly related to entities like functions, files, etc.
+
+\ref <name> - will make a hyper-link to the named entity.
+
+\sa {references} - Produces bold face 'See also' before the references.
+
+\section <section_name> (section title) - starts a new section in the current 
+   comment block
+
+\subsection <subsection_name> (subsection title) - starts a new subsection in 
+   the current
+
+\todo {to do description} - Comments of things that need to be done (will show
+  up on current entity and on separate 'Todo List' Page).
+
+\verbatim/endverbatim - these commands are used to bracket text that will 
+   appear exactly as typed (Doxygen commands disabled within).
+\endverbatim
+
+
+We have defined the following aliases for our project:
+
+\verbatim
+ \description - Inserts a bold face 'Description:'.
+
+ \modifications - Inserts a bold face 'Modifications:'.
+\endverbatim
+
+
+
+\section FormattedLists Bulleted and Numbered Lists
+
+Lists and nested lists can be easily created.
+
+\verbatim
+/**
+ * The bulleted list:  
+ *  - item
+ *     - subitem
+ *     - subitem
+ *  - item
+ *  - ....
+ */
+\endverbatim
+
+The above comment produces:
+
+The bulleted list:  
+  - item
+     - subitem
+     - subitem
+  - item2 
+  - ....
+
+Numbered lists can also be made, but the subitems are not properly numbered
+(a bulleted list inside a numbered list works fine).
+
+\verbatim
+/**
+ * The numbered list:  
+ *  -# item
+ *     -# subitem
+ *     -# subitem
+ *  -# item
+ *  -# ....
+ */
+\endverbatim
+
+The above comment produces:
+
+The numbered list:  
+  -# item
+     -# subitem
+     -# subitem
+  -# item
+  -# ....
+
+
+
+\section Modules Modules
+
+The data types and functions in FCLib are grouped together into user-defined
+modules for easier reference. Top level module definitions are created like
+this:
+
+\verbatim
+/** 
+ * \defgroup  API FCLib API
+ */
+\endverbatim
+
+which defines a group named 'API' and titled 'FCLib API'. Submodules
+can be defined like this:
+
+\verbatim
+/**
+ * \ingroup  API
+ * \defgroup DataInterface Data Interface
+ */
+\endverbatim
+
+Any entities that you want to appear in a module should have an 'ingroup'
+command in their documentation.
+
+The top level modules for FCLib are declared in \ref doxy_module_defs to insure
+that the appear in the documentation in the desired order. Further
+documentation is added to some of the groups in the appropriate source files
+using the 'addtogroup' command (see next section).
+
+
+
+\section ExampleModule Example: Module documentation
+
+Below are code snippets to create a (fictitious) module and its
+two submodules.
+ 
+In file \ref doxy_module_defs :
+\verbatim
+/**
+ * \defgroup API FCLib API
+ * \brief Feature Characterization Library API
+ *
+ * \description
+ *
+ *    ...
+ */
+
+...
+
+    /** 
+     * \ingroup API
+     * \defgroup ExampleModuleTag Example Module Name 
+     */
+
+...
+\endverbatim
+
+and in example_module.c:
+\verbatim
+/**
+ * \addtogroup  ExampleModuleTag
+ * \brief  One sentence explanation about the example module
+ *
+ * \description
+ * 
+ *    General, detailed text about the example module
+ *
+ *   ...
+ */
+
+/**
+ * \ingroup  ExampleModuleTag
+ * \defgroup SubModule1Tag Submodule 1
+ */
+
+/**
+ * \ingroup  ExampleModuleTag
+ * \defgroup SubModule2Tab Submodule 2  
+ *
+ * \brief Can add text here to explain submodule.
+ */
+
+
+...
+\endverbatim
+
+Note the use of the 'addtogroup' command to provide documentation to the
+module because it had already been defined. This is done so that the
+documentation for module can be maintained in the appropriate .c file.
+
+
+
+\section ExampleFile Example: File documentation
+ 
+In addition to entity documentation within files, each source file should also
+be documented as a file. Here is an example of the minimum required documentation
+for FCLib source files:
+
+\verbatim
+/** 
+ * \file  some_file.h
+ * \brief Public declarations for the \ref SomeModule Module.
+ *
+ * $ Source$              (but without space between '$' and the word
+ * $ Revision$             which we had to do here to prevent CVS
+ * $ Date$                 from messing up our documentation).
+ */
+\endverbatim
+
+where Source, Revision, and Date (when between '$'s) are helpful cvs
+keywords. Files that are the source for command line programs will generally
+have extensive documentation in the the file comment block (for example, see
+source code for \ref fcdump.c).
+
+
+
+\section ExampleFunction Example: Function documentation
+
+Here is an example of how to document a function. The format is essential the
+same for structs, enums, typedefs, global variables, defines, etc.
+
+\verbatim
+/**
+ * \ingroup  SomeModule
+ * \brief  This function does something.
+ *
+ * \description
+ *
+ *    This function does something by first examining it's arguments and
+ *    and then manipulating them this way and that:
+ *      - first it squeezes them
+ *      - then it freezes them
+ *      - and finally it sneezes them
+ *
+ *    After all of that, it calls \ref another_function and returns a number.
+ *
+ * \todo Somebody really ought to rewrite this vague documentation
+ *
+ * \bug This functions doesn't handle candy types yet!
+ *
+ * \modifications  
+ *    - 01/02/03  JD,  Created.
+ *    - 01/04/03  PNT, Added handling of savory types
+ */
+int some_function(
+  Snack* snack,  /**< input/output - a pointer to the snack to be modified */
+  int numSalt,   /**< input - the number of salt grains to add*/
+  int* shouldIEatIt  /**< output - flag for whether to eat the snack */
+) {
+  // check input
+  if (!snack || numSalt < 0)
+    return FC_INPUT_ERROR;
+
+  ...
+}
+\endverbatim
+
+Most functions (structs, enums, etc) should be in a module so use the command
+'ingroup' to specify which module this documentation belongs to.  Next provide
+a brief description and a blank line (brief descriptions must always be
+followed by a blank line unless they are the last command in the comment
+block).
+
+The rest of the documentation is considered the detailed description. The
+description command just produces a bold 'Description:' as a heading. The
+'todo' and 'bug' commands create headings and also put their comments on the
+\ref todo and \ref bug pages. The 'modification' command also produces a
+bold heading and it an FCLib convention to put each modification in a list
+with the date, modifiers initials, and a brief comment.
+
+The arguments of functions should also be documented. It is an FCLib 
+convention to start the comment with 'input' (argument is purely for input),
+'output' (argument is purely for output), or 'input/out' (argument that
+is modified). Be sure to use '-' after this tag--for some reason Doxygen
+does not like ':'.
+
+
+\section ExamplePage Example: Page documentation
+
+Pages are entities that are used to generate documentation that isn't
+associated with actual code entities like functions or variables.
+Here is a section of the file used to create this page:
+
+\verbatim
+/*
+\page page1  FCLib conventions for Doxygen documentation (for developers)
+
+This page describes FCLib specific conventions for creating comments blocks
+that produce the Doxygen documentation.
+
+\section TOC Table of Contents:
+
+ - \ref CommentBlocks
+ - \ref DoxygenCommands
+ 
+...
+
+\section CommentBlocks Doxygen comment blocks
+
+Doxygen only examines comments that are marked as special. For example
+
+\verbatim
+/**  
+ * This is a Doxygen comment block because it starts with an
+ * an extra '*'.
+   '*'s on middle lines are optional.
+ */
+
+/* 
+ * This is a normal 
+ * comment block
+ */
+\ endverbatim
+
+...
+
+*/
+\endverbatim
+
+A page comment block is declared with the 'page' command. The documentation
+can be broken into sections and subsections which can be referenced, for
+example to build a table of contents. 'verbatim/endverbatim' commands can
+be used to set off code samples.
+
+*/
+
+//------------- DesignNotes page (convert from html file)
+
+/**
+\page design_page  Design Notes (for developers)
+\htmlinclude FCLib_designNotes.html
+*/
+
+

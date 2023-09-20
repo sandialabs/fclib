@@ -1,0 +1,294 @@
+## Copyright (2000) Sandia Corporation. Under the terms of Contract
+## DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains 
+## certain rights in this software.
+##
+## Redistribution and use in source and binary forms, with or without
+## modification, are permitted provided that the following conditions are met:
+##
+##   * Redistributions of source code must retain the above copyright
+##     notice, this list of conditions and the following disclaimer.
+##
+##   * Redistributions in binary form must reproduce the above copyright
+##     notice, this list of conditions and the following disclaimer in the
+##     documentation and/or other materials provided with the
+##     distribution.
+##
+##   * Neither the name of Sandia nor the names of any contributors may
+##     be used to endorse or promote products derived from this software
+##     without specific prior written permission.
+##
+##   * Modified source versions must be plainly marked as such, and must
+##     not be misrepresented as being the original software.
+##
+## THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+## AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+## IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+## ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR CONTRIBUTORS BE LIABLE FOR 
+## ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
+## DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+## SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+## CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+## LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+## OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH 
+## DAMAGE.
+
+## $Source: /usr/local/Repositories/fcdmf/fclib/Makefile.include,v $
+## $Revision: 1.100 $
+## $Date: 2007/07/18 00:11:45 $
+## 
+## Include file to set common parameters for Makefiles in all directories
+##
+SHELL = /bin/sh
+
+## -------- Edit below to reflect your environment ----------------
+## Note that unless it is explicitly stated that a path can be
+## relative, all paths must be absolute. 
+
+# Comment out, or change to no, if you do not have libxml2
+HAVE_LIBXML2 = yes
+
+# Change to yes if you have Exodus and update locations for Exodus below
+# you must have 4.58 or later. I need to find some way to enforce this
+HAVE_EXODUS = yes
+
+
+# Change these to yes if you're doing profiling or coverage testing
+USE_GPROF = no
+USE_GCOV = no
+
+
+# For libxm2: Location of config helper program
+LIBXML2CONFIG = /usr/bin/xml2-config
+
+
+# For ExodusII: Location of Exodus II & netcdf Installation
+# Set HOME or set INC and LIB paths separately (variables used for build are
+# NETCDF_INC_DIR, NETCDF_LIB_DIR, EXODUS_INC_DIR, and EXODUS_LIB_DIR).
+NETCDF_HOME = /usr/local/exodusii-4.17-bundle
+NETCDF_INC_DIR = ${NETCDF_HOME}/include
+NETCDF_LIB_DIR = ${NETCDF_HOME}/lib
+NETCDF_LIBS = -lnetcdf
+EXODUS_HOME = ${NETCDF_HOME}
+EXODUS_INC_DIR = ${EXODUS_HOME}/include
+EXODUS_LIB_DIR = ${EXODUS_HOME}/lib
+EXODUS_LIBS = -lexoIIv2c
+
+# (optional) Path to where you want FCLib to be installed
+INSTALL_DIR = /usr/local
+
+# (optional) *Relative* location of FCLib data directory (rel to this file)
+FCLIB_DATA_DIR = ../../fclib-data
+
+# compiler
+CC = gcc
+
+# compiler flags
+# debugging on by default
+DEBUG_FLAG = -g
+
+# uncomment this to use gprof
+ifeq (${USE_GPROF},yes)
+ GPROF_FLAG = -pg
+endif
+
+# uncomment this to use gcov
+ifeq (${USE_GCOV},yes)
+ GCOV_FLAG = -fprofile-arcs -ftest-coverage
+endif
+
+# comment this if your compiler doesn't understand these flags
+WARN_FLAGS = -Wall -W -Wundef -Wcast-align -Wmissing-prototypes \
+             -Wmissing-declarations -Wstrict-prototypes -Wpointer-arith \
+             -Wcast-qual -Wredundant-decls -Wnested-externs \
+             -Winline -Wno-long-long -Wshadow
+
+# FIX?: More flags that should/could be added to WARN_FLAGS
+#-std=c99 -pedantic : see lots of warnings, so punted
+#-bad-function-cast : giving warnings that I don't think it should
+#-Wconversion : see lots of warnings, so punted
+#-Wwrite-string : see lots of warnings, so punted
+#-Wdeclaration-after-statement : doesn't work on Mac :(
+
+
+## ---------------- End of editable section ------------------------
+
+##
+## Swig stuff (not yet part of release, so not in editable section yet)
+##
+
+SWIG_HOME =
+
+PYTHON_HOME =
+PY_INC_DIR = ${PYTHON_HOME}/include/python2.2
+PY_LIB_DIR = ${PYTHON_HOME}/lib/python2.2
+
+PERL_INC_DIR = 
+
+JAVA_INC_DIR =
+JAVA_LIB_DIR =
+
+##
+## The library
+##
+
+FC_VERSION = 1.6.1
+FC_ROOT = fc
+FCLIB = lib${FC_ROOT}.a
+FCLDLIB = -l${FC_ROOT}
+FCLIB_PATH = modules
+FC_RELEASE = ${FC_ROOT}lib-${FC_VERSION}
+
+##
+## Auto detect specific locations (for developers)
+## And override above settings
+##
+
+# calico - home of FCDMF cvs repository and generic fclibuser
+# this will have to be changed to use 4.58 if we keep calico
+ifeq (${HOST},calico)
+  MISC_HOME = /home/fclibuser/util
+  NETCDF_HOME = ${MISC_HOME}/src/exodusii-4.35-bundle
+  NETCDF_INC_DIR = ${NETCDF_HOME}/include
+  NETCDF_LIB_DIR = ${NETCDF_HOME}/lib
+  EXODUS_INC_DIR = ${NETCDF_HOME}/include
+  EXODUS_LIB_DIR = ${NETCDF_HOME}/lib
+  SWIG_HOME = /home/wkoegle/util/bin
+  PERL_INC_DIR = /usr/lib/perl5/5.6.1/i386-linux/CORE
+  PY_INC_DIR = /usr/include/python2.2
+  PY_LIB_DIR = /usr/lib/python2.2
+  INSTALL_DIR = /home/fclibuser/Work/fcdmf/fclib
+endif
+
+
+# plaid - place of much FCLib development
+HOST_TEST = $(patsubst plaid%,plaid,${HOST})
+ifeq (${HOST_TEST},plaid)
+  MISC_HOME = /home/wkoegle/util
+  SWIG_HOME = ${MISC_HOME}/bin
+  PERL_INC_DIR = /usr/lib/perl5/5.6.1/i386-linux/CORE
+  PY_INC_DIR = /usr/include/python2.2
+  PY_LIB_DIR = /usr/lib/python2.2
+  INSTALL_DIR = /home/fclibuser/Work/fcdmf/fclib
+
+  ## WARNING ## This will override the exodus/netcdf vars
+  BUNDLE_DIR = /home/fclibuser/fcdmf/dependency_libs/bundle
+
+endif
+
+# ann - also see later
+HOST_TEST = $(patsubst ann%,ann,${HOSTNAME})
+ifeq (${HOST_TEST},ann)
+  MISC_HOME = /home/gentile/fclib/utils
+  NETCDF_HOME = ${MISC_HOME}/exodusii/exodusii-4.61/install-netcdf
+  EXODUS_HOME = ${MISC_HOME}/exodusii/exodusii-4.61
+  EXODUS_LIBS = -lexoIIv2c
+  NETCDF_INC_DIR = ${NETCDF_HOME}/inc
+  NETCDF_LIB_DIR = ${NETCDF_HOME}/lib
+  EXODUS_INC_DIR = ${EXODUS_HOME}/include
+  EXODUS_LIB_DIR = ${EXODUS_HOME}/lib
+#  SWIG_HOME = ${MISC_HOME}/bin
+#  PERL_INC_DIR = /usr/lib/perl5/5.6.1/i386-linux/CORE
+#  PY_INC_DIR = /usr/include/python2.2
+#  PY_LIB_DIR = /usr/lib/python2.2
+  INSTALL_DIR = /home/gentile/fclib/fclib-install
+endif
+
+
+# icc/nwcc - SNL clusters
+# SRN : liberty, spirit, thunderbird, shasta
+# SCN : freedom, justice, lassen
+# this will have to be updated to use exodus 4.58
+ifneq (${SNLCLUSTER},)
+  PROJECT_HOME = /projects/ascdd
+  EXODUS_HOME = ${PROJECT_HOME}/ExodusII-4.35-bundle/${SNLCLUSTER}
+  NETCDF_INC_DIR = ${EXODUS_HOME}/include	
+  NETCDF_LIB_DIR = ${EXODUS_HOME}/lib	
+  EXODUS_INC_DIR = ${EXODUS_HOME}/include
+  EXODUS_LIB_DIR = ${EXODUS_HOME}/lib
+  INSTALL_DIR = ${PROJECT_HOME}/fclib/${SNLCLUSTER}/newinstall
+endif
+
+# shasta - old mpi stuff
+#ifeq (${SNLCLUSTER},shasta)
+#HDF5_HOME = /projects/sierra/Release/hdf5/1.7.45/dp_gnu3.1gm_opt
+#HDF5_INC_DIR = ${HDF5_HOME}/include
+#HDF5_LIB_DIR = ${HDF5_HOME}/lib
+#SAF_HOME = /projects/sierra/Release/saf/2.0.2/dp_gnu3.1gm_opt
+#SAF_INC_DIR = ${SAF_HOME}/include
+#SAF_LIB_DIR = ${SAF_HOME}/lib
+#CC = /apps/gnu/gcc-3.2.2/mpich-gm-1.2.5..10/bin/mpicc
+#INSTALL_DIR = /projects/princeann/gentile/fclibs/fclib-mpi
+#endif
+
+# LLNL NIF OI
+HOST_TEST = $(patsubst oi%,oi,${HOST})
+# Config for oi machines
+# DO NOT CHANGE THIS LINE OR THE ONE BELOW
+# CONFIG FOR OI
+ifeq (${HOST_TEST},oi)
+INSTALL_DIR = OI_Analysis
+endif
+
+
+# Bundle Dir
+#  If the user supplies a bundle dir variable, then we have
+#  exodus and netcdf built somewhere locally.
+ifdef BUNDLE_DIR
+  NETCDF_HOME    = ${BUNDLE_DIR}
+  NETCDF_INC_DIR = ${NETCDF_HOME}/include
+  NETCDF_LIB_DIR = ${NETCDF_HOME}/lib
+  EXODUS_INC_DIR = ${NETCDF_HOME}/include
+  EXODUS_LIB_DIR = ${NETCDF_HOME}/lib
+  EXODUS_LIBS    = -lexoIIv2c
+endif
+
+
+
+
+##
+## compiler flags & misc
+##
+
+RM = rm -f
+
+# Note that (older version?) extensions are .bb, .bbg, .da, & .gcov
+GCOV_FILES = *.gcda *.gcno *.gcov
+
+## Defalt compiler flags
+CFLAGS = ${GPROF_FLAG} ${GCOV_FLAG} ${DEBUG_FLAG} ${WARN_FLAGS}
+CPPFLAGS =
+LDFLAGS =
+LDLIBS =
+
+## AIX - have to ask for large address or only get 256M for heap!
+#  Ask for 7 segemnts (8 is the max but we leave one for debuggers
+#  and other tools)
+ifeq (${OSTYPE},aix)
+  LDFLAGS += -Wl,-bmaxdata:0x70000000
+endif
+
+## File IO additions to flags
+# Exodus
+ifeq (${HAVE_EXODUS},yes)
+  ifeq (${USE_EXODUSNEW},yes)
+    CPPFLAGS += -DUSE_EXODUSNEW
+  endif	
+  CPPFLAGS += -DHAVE_EXODUS -I${NETCDF_INC_DIR} -I${EXODUS_INC_DIR}
+  LDFLAGS += -L${NETCDF_LIB_DIR} -L${EXODUS_LIB_DIR}
+  LDLIBS += ${EXODUS_LIBS} ${NETCDF_LIBS}
+## Fix this! Can't just add because doesn't work on mac or aix
+## (remove need for having HDF5 lib directory in LD_LIBRARY_PATH)
+  ifeq (${OSTYPE_TEST},linux)
+    LDFLAGS += -Wl,-rpath=${NETCDF_LIB_DIR} -Wl,-rpath=${EXODUS_LIB_DIR}
+  endif
+endif
+# libxml2
+ifeq (${HAVE_LIBXML2},yes)
+  CPPFLAGS += -DHAVE_LIBXML2 `${LIBXML2CONFIG} --cflags`
+  LDLIBS += `${LIBXML2CONFIG} --libs`
+endif
+
+
+## One last library
+LDLIBS += -lm
+

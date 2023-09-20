@@ -1,0 +1,289 @@
+<!--                                                             
+  Copyright (2000) Sandia Corporation. Under the terms of Contract
+  DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+  certain rights in this software.
+ 
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+ 
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the
+      distribution.
+
+    * Neither the name of Sandia nor the names of any contributors may
+      be used to endorse or promote products derived from this software
+      without specific prior written permission.
+  
+    * Modified source versions must be plainly marked as such, and must
+      not be misrepresented as being the original software.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+  ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR CONTRIBUTORS BE LIABLE FOR 
+  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
+  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+  OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH 
+  DAMAGE.
+-->
+
+<!--
+  $Source: /usr/local/Repositories/fcdmf/fclib/doxyfiles/FCLib_installation.html,v $
+  $Revision: 1.19 $ 
+  $Date: 2006/11/14 20:02:08 $
+-->
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML4.0 Transitional//EN">
+<html>
+
+<head>
+   <title>Feature Characterization Library</title>
+</head>
+	
+<body bgcolor="#ffffff" vlink="#0000ff" alink="#0000ff">
+   
+
+<h3><hr>Table of Contents<hr></h3>
+
+<ol>
+   <li><a href="#Platforms">Platforms</a></li>
+   <li><a href="#Downloads">Downloads</a></li>
+   <li><a href="#Dependencies">Dependencies</a></li>
+   <li><a href="#Configuring">Configuring</a></li>
+   <li><a href="#Build">Building</a></li>
+   <li><a href="#Troubles">Troubleshooting</a></li>
+</ol>
+
+
+<a name="Platform"><h4>1. Platforms </h4></a>  
+
+<p>
+FCLib was developed using gcc and gmake on Linux RedHat 7.3, RedHat Enterprise
+3.0, RedHat Fedora 7, and Mac OS X. It should work on any Unix platform and most places with gcc
+and gmake installations. It will probably work with most C compilers.
+</p>
+
+<a name="Downloads"><h4>2. Downloads</h4></a>
+
+<p>
+
+The code is available for download from our web page 
+<a target="_top" href="http://fclib.ca.sandia.gov">
+http://fclib.ca.sandia.gov</a>. 
+Some of the optional libraries are available there as well.
+
+</p>
+ 
+<a name="Dependencies"><h4>3. Dependencies </h4></a>  
+
+<p>
+There are no required dependencies for FCLib. Optional dependencies include:
+</p>
+
+<ul>
+  <li>File IO w/ ExodusII -- Requires ExodusII 4.61 or greater and NetCDF 3.6.2 
+      or greater -- ExodusII is a file format library developed by 
+      Sandia National Labs and is available (bundled with NetCDF) at our
+      web site <a targe="_top" href="http://fclib.ca.sandia.gov"
+      >http://fclib.ca.sandia.gov</a>.
+  </li>
+  <li>File IO w/ Gnome libxml2 -- This XML file format library is found on
+      most Unix systems in /usr. Otherwise it is available at <a target="_top"
+      href="http://xmlsoft.org/">http://xmlsoft.org</a>.
+  </li>
+  <li>Building Documentation -- Requires Doxygen 1.4 or greater (and
+      optionally Graphviz with gd support) --
+      Doxygen is a documentation system for C++, C, Java, and a variety of
+      other languages. It can be obtained at <a target="_top"
+      href=http://www.doxygen.org>http://www.doxygen.org</a>. If
+	you are installing this on a Fedora Linux machine these
+	dependencies can be resolved with:<br><br>
+	<b>yum install gd graphviz graphviz-gd doxygen</b> 
+
+  </li>
+</ul>
+
+<br>
+<p>
+NOTE: SAF file i/o has been phased out in this release.
+</p>
+
+
+<a name="Configuring"><h4>4. Configuring</h4></a>    
+
+<p>    
+You must manually configure FCLib. Edit the file "Makefile.include" to reflect 
+your system (more instructions can be found within that file):
+</p>
+
+<ul>
+   <li>
+      For Exodus File IO --  On by default (to turn off set HAVE_EXODUS to no).
+      Provide the location of the include and library directories for Exodus II
+      and NetCDF.
+   </li>
+   <li>
+      For XML File IO -- On by default (to turn off set HAVE_LIBXML2 to no).
+      Provide the location of of the libxml2 helper program xml2-config.
+   </li>
+   <li>
+      To install outside of build directory -- Provide an absolute path to
+      the install directory (include files will be placed in 
+      INSTALL_DIR/include, library files in INSTALL_DIR/lib, and tool
+      executables in INSTALL_DIR/bin).
+   </li>
+   <li>
+      You can also change the compiler and compiler flags, but the code has 
+      only been tested with gcc and the listed flags.  
+   </li>
+</ul> 		
+   
+<a name="Build"><h4>5. Building</h4></a>
+
+<p>
+Below is a list of make targets. The typical build process is "make", then
+"make check", then "make install".
+</p>
+
+
+<TABLE BORDER=0>
+   <TR VALIGN="top">
+      <TD WIDTH=100><tt>make</tt></td>
+      <TD WIDTH=10>-</TD>
+      <TD>Build the library and tools.</TD>
+   </TR>
+   <TR VALIGN="top">
+      <TD><tt>make install</tt></td>
+      <TD>-</TD>
+      <TD>Install the library and tools in the directory specified in 
+          Makefile.include.</TD>
+   </TR>
+   <TR VALIGN="top">
+      <TD><tt>make doc</tt></td>
+      <TD>-</TD>
+      <TD>Create Doxygen generated html documentation.</TD>
+   </TR>
+   <TR VALIGN="top">
+      <TD><tt>make data</tt></td>
+      <TD>-</TD>
+      <TD>Build data files for testing and examples.</TD>
+   <TR VALIGN="top">
+      <TD><tt>make examples</tt></td>
+      <TD>-</TD>
+      <TD>Builds examples.</TD>
+   </TR>
+   <TR VALIGN="top">
+      <TD><tt>make regtest</tt></td>
+      <TD>-</TD>
+      <TD>Build and run the regression tests (if no make errors are reported, 
+          the regression tests passed).</TD>
+   </TR>
+   <TR VALIGN="top">
+      <TD><tt>make check</tt></td>
+      <TD>-</TD>
+      <TD>Build and run the unit tests.</TD>
+   </TR>
+   <TR VALIGN="top">
+      <TD><tt>make world</tt></td>
+      <TD>-</TD>
+      <TD>Builds everything and then runs the regression and unit tests.</TD>
+   </TR>
+   <TR VALIGN="top">
+      <TD><tt>make distclean</tt></td>
+      <TD>-</TD>
+      <TD>Deletes files created by the build process (use if you want to 
+          rebuild from scratch).</TD>
+   </TR>
+   <TR VALIGN="top">
+      <TD><tt>make reallydistclean</tt></td>
+      <TD>-</TD>
+      <TD>Deletes all generated files including some of the documentation
+          as well as the files deleted by 'make distclean'.</TD>
+   </TR>
+</TABLE>
+
+<p> Additional testing requires that fclib-data (a repository of large and real
+data examples) be present in the same directory that the fclib build
+directory is in (or edit Makefile.include to point to it).
+</p>
+
+<TABLE>
+   <TR VALIGN="top">
+      <TD><tt>make regtest2</tt></td>
+      <TD>-</TD>
+      <TD>Build and run additional regression test. Only works if you have
+          fclib-data.</TD>
+   </TR>
+   <TR VALIGN="top">
+      <TD><tt>make check2</tt></td>
+      <TD>-</TD>
+      <TD>Build and run additional unit tests. Only works if you have 
+          fclib-data.</TD>
+   </TR>
+</TABLE>
+   
+<a name="Troubles"><h4><hr> Troubleshooting<hr></h4></a>    
+
+<p>If you problem is not addressed by one of the items below, please
+contact as at 
+<a href=mailto:fclib-help@ca.sandia.gov>fclib-help@ca.sandia.gov</a>.
+</p>
+
+
+
+<ol>
+   <li>
+      When making the documentation, if you get errors about building 
+      dependency graphs, you will need to also install Graphviz 
+      (<a target="_top" 
+      href=http://www.research.att.com/sw/tools/graphviz/>http://www.research.att.com/sw/tools/graphviz/</a>).
+      <p></p>
+   </li>
+ 
+   <li>When making the documentation, if you see errors about Graphviz
+     or <b>dot</b> not being able to generate GIF output files, you'll
+     need to install additional Graphviz support libraries. Different
+     versions of Graphviz support different image formats (due to
+	license fears). One option for fixing this problem is to
+	install the  
+	<a href=http://www.boutell.com/gd/>GD</a> library extension
+	for Graphviz. 
+      <p></p>
+   </li>
+   <li>
+      Most warnings during 'make doc' can be safely ignored. Warnings of the
+      type "Warning: ignoring unsupported tag ..." may occur if you are 
+      using an older version of Doxygen.
+
+     <p></p>
+    </li>
+   <li>
+      If compiling fails with the error "Internal compiler error in 
+      dwarf2out_finish, at dwarf2out.c:12301", we believe this is a compiler
+      bug. It can be "fixed" by removing '-g' from the CXXFLAG variable in 
+      Makefile.include, or by trying a different compiler. We have only seen 
+      the error once--with gcc 3.2.2 built for Red Hat Linux 3.2.2-5.
+      <p></p>
+   </li>
+   <li>
+      If linking fails with errors having to do with "ssaio" or "aio_...",
+      try adding "-lrt" to the variable HDF5_LIBS in Makefile.include.
+      (This should be happening automatically for linux machines).
+      <p></p>
+   </li>
+</ol> 
+     
+   
+<hr>
+<address> Last modified: $Date: 2006/11/14 20:02:08 $ </address>
+
+</body>
+</html>
+

@@ -1,0 +1,624 @@
+/*
+ * Copyright (2000) Sandia Corporation. Under the terms of Contract
+ * DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+ * certain rights in this software.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *   * Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ *
+ *   * Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the
+ *     distribution.
+ *
+ *   * Neither the name of Sandia nor the names of any contributors may
+ *     be used to endorse or promote products derived from this software
+ *     without specific prior written permission.
+ *
+ *   * Modified source versions must be plainly marked as such, and must
+ *     not be misrepresented as being the original software.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+ * DAMAGE.
+ */
+
+/**  
+ * \file doxy_module_defs
+ * \brief Top level module definitions
+ *
+ * \description
+ *
+ *    The upper level module defines are collected here to force their ordering
+ *    in the documentation. Plus this is the only place the top most
+ *    level of modules is defined.
+ *
+ * \modifications
+ *    - Renata McCoy, created, developed with Doxygen v. 1.3.2 
+ *    - 8/24/04 RM, added page for cvs conventions.
+ *    - 9/1/04 WSK, moved pages to their own file.
+ *    - 1/11/05 ACG, added new module TimeSeries
+ *    - 6/1/05 ACG, TimeSeries changed to Series
+ *    - 8/1/05 ACG, added ElemDeath
+ *    - 12/19/05 ACG, added Shape
+ *    - 12/19/05 ACG, previously added an example,
+*       but hadnt added it here
+ *
+ * $Source: /usr/local/Repositories/fcdmf/fclib/doxyfiles/doxy_module_defs,v $
+ * $Revision: 1.48 $
+ * $Date: 2006/11/21 18:57:55 $
+ */
+
+//------------- top level group = FCDMF Library
+
+/**
+ * \defgroup API FCLib API
+ * \brief Feature Characterization Library
+ *
+ * \description
+ *
+ *   Collection of data structures and routines for post-processing
+ *   data analysis of simulation datasets. The focus is on
+ *   characterizing features.
+ */
+
+    /** 
+     * \ingroup API
+     * \defgroup DataTypes Data Types
+     */
+
+    /** 
+     * \ingroup API
+     * \defgroup SimpleDataObjects Simple Data Objects
+     */
+
+    /** 
+     * \ingroup API
+     * \defgroup DataInterface Data Interface
+     */
+  
+        /**
+         * \ingroup DataInterface
+         * \defgroup Handles Handles
+         */
+
+       	/**
+       	 * \ingroup  DataInterface
+       	 * \defgroup  Library Library
+       	 */
+
+       	/**
+       	 * \ingroup  DataInterface
+       	 * \defgroup  Dataset Dataset
+       	 */
+
+       	/**
+         * \ingroup  DataInterface
+         * \defgroup  Sequence Sequence
+         */
+
+        /**
+         * \ingroup  DataInterface
+         * \defgroup  Mesh Mesh
+         */
+
+        /**
+         * \ingroup  DataInterface
+         * \defgroup  Subset Subset
+         */
+
+        /**
+         * \ingroup  DataInterface
+         * \defgroup  Variable Variable
+         */
+
+        /**
+	 * \ingroup DataInterface
+         * \defgroup FileIO File IO
+         */
+
+        /**
+         * \ingroup  DataInterface
+         * \defgroup  PrivateTable Table (Private)
+         */
+
+        /** 
+         * \ingroup DataInterface
+         * \defgroup SAFCover SAF Cover
+         */
+
+    /** 
+     * \ingroup API
+     * \defgroup Utilities Utilities
+     */
+
+    /** 
+     * \ingroup API
+     * \defgroup ErrorHandling Error Handling
+     */
+
+    /**
+     * \ingroup API
+     * \defgroup GeometricRelations Geometric Relations
+     */
+
+    /**
+     * \ingroup API
+     * \defgroup TopologyRelations Topological Relations
+     */
+
+    /**
+     * \ingroup API
+     * \defgroup VariableMath Variable Math
+     */
+
+    /**
+     * \ingroup API
+     * \defgroup Statistics Statistics Routines
+     */
+
+    /**
+     * \ingroup API
+     * \defgroup Series Series Routines
+     */
+
+    /**
+     * \ingroup API
+     * \defgroup Threshold Threshold
+     */
+
+    /**
+     * \ingroup API
+     * \defgroup Shape Shape
+     */
+
+    /**
+     * \ingroup API
+     * \defgroup ElemDeath Element Death
+     */
+
+    /** 
+     * \ingroup API
+     * \defgroup Features Features
+     */
+
+    /**
+     * \ingroup API
+     * \defgroup FeatureTracking Feature Tracking
+     */
+
+    /**
+     * \ingroup API
+     * \defgroup Sierra Sierra
+     */
+
+    /**
+     * \ingroup API
+     * \defgroup Custom Custom
+     */
+
+//------------- top level group = Tools
+
+/**
+ * \defgroup Tools Command line tools
+ * \brief Command line tools.
+ *
+ * \description
+ *
+ *    Tools for
+ *      - specific analyses and characterizations 
+ *      - converting data to and from a format FCLib can use.
+ *      - viewing how FCLib is interpreting files.
+ */
+
+   /**
+     * \ingroup Tools
+     * \defgroup analyzeSpotWelds analyzeSpotWelds
+     * \brief Presto spotweld analysis (more at analyzeSpotWelds.c).
+     *
+     * \description
+     *
+     *    See analyzeSpotWelds.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup bb2exo bb2exo
+     * \brief Convert bounding box file to a dataset (more at bb2exo.c).
+     *
+     * \description
+     *
+     *    See bb2exo.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup dyna2names dyna2names.pl
+     * \brief Create a .names file from an LSDyna input file.
+     *
+     * \description
+     *
+     *    The resulting file will be named d3plot.names. If it is
+     *    present in the same directoy as a d3plot file, FCLib will
+     *    use it to name meshes when it loads the d3plot file. 
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup dyna2saf dyna2saf
+     * \brief Convert an LSDyna dataset to SAF (more at dyna2saf.c).
+     *
+     * \description
+     *
+     *    See dyna2saf.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup edgeStats edgeStats
+     * \brief Get edge statistics for dataset (more at edgeStats.c).
+     *
+     * \description
+     *
+     *    See edgeStats.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup exodump exodump
+     * \brief Print meta data from an Exodus file (more at exodump.c).
+     *
+     * \description
+     *
+     *    See exodump.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup extents extents
+     * \brief Print bounding boxes of the dataset and its meshes (more at
+     *           extents.c). 
+     *
+     * \description
+     *
+     *    See extents.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup fc2ensight fc2ensight
+     * \brief Convert a dataset to Ensight format (ascii) (more at 
+	       fc2ensight.c).
+     *
+     * \description
+     *
+     *    See fc2ensight.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup fc2exo fc2exo
+     * \brief Convert a dataset to Exodus format.
+     *
+     * \description
+     *
+     *    This is just a wrapper for fcconvert (see fcconvert.c) that
+     *    specifies the format as Exodus.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup fcconvert fcconvert
+     * \brief Convert a dataset to another file type (more at fcconvert.c).
+     *
+     * \description
+     *
+     *    See fcconvert.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup fcdump fcdump
+     * \brief Print FCLib's interpretation of a dataset (more at fcdump.c).
+     *
+     * \description
+     *
+     *    See fcdump.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup fcinfo fcinfo
+     * \brief Provide information about installed version of FCLib.
+     *
+     * \description
+     *
+     *    If called without arguments, this prints the version number
+     *    and the install date (or build date if not installed). These
+     *    values can be retrieved separately if called with the flags
+     *    "--version" or "--date", respectively.
+     *
+     *    The flags "--cflags" and "--libs" will return the compile flags and
+     *    the linker flags, respectively, that were used to build the
+     *    library. Therefore fcinfo can be used to provide compiler flags:
+\verbatim
+gcc -o exe src.c `fcinfo --cflags` `fcinfo --libs`
+\endverbatim
+     *    NOTE: Surrounding the commands with back quotes (`) causes
+     *    them to execute as a command within the command.
+     *    NOTE: If you used a different compiler than gcc to build FCLib,
+     *    you may need to use that compiler instead of gcc.
+     */
+
+
+   /**
+     * \ingroup Tools
+     * \defgroup fcswapAssoc fcswapAssoc
+     * \brief Converts association of one var type to another (more at fcswapAssociation.c)
+     *
+     * \description
+     *
+     *    See fcswapAssoc.c.
+     */
+
+
+    /**
+     * \ingroup Tools
+     * \defgroup gaplines gaplines
+     * \brief Look at gaps by creating lines connecting the surfaces of two
+     *     meshes (more at gaplines.c).
+     *
+     * \description
+     *
+     *    See gaplines.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup geomExtract geomExtract
+     * \brief Extract the requested geometry to a new dataset (more at 
+     *      geomExtract.c).
+     *
+     * \description
+     *
+     *    See geomExtract.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup loadHistory loadHistory
+     * \brief Calculate the load history on a subset of a mesh (more at 
+     *        loadHistory.c).
+     *
+     * \description
+     *
+     *    See loadHistory.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup maxStress maxStress
+     * \brief Report regions of maximum stress, either in compression or 
+     *    tension. (more at maxStress.c).
+     *
+     * \description
+     *
+     *    See maxStress.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup safdump safdump
+     * \brief Print metadata about a SAF file (more at safdump.c).
+     *
+     * \description
+     *
+     *    See safdump.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup scovdump scovdump
+     * \brief Print SAF Cover's interpretation of a SAF file (more at 
+     *          scovdump.c).
+     *
+     * \description
+     *
+     *    See scovdump.c.
+     */
+
+   /**
+     * \ingroup Tools
+     * \defgroup screwBreaks screwBreaks
+     * \brief Analysis of screw Breaks (more at screwBreaks.c).
+     *
+     * \description
+     *
+     *    See screwBreaks.c.
+     */
+
+   /**
+     * \ingroup Tools
+     * \defgroup seriesAnalyzer seriesAnalyzer
+     * \brief Variety of series analyses (more at seriesAnalyzer.c).
+     *
+     * \description
+     *
+     *    See seriesAnalyzer.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup sierradump sierradump
+     * \brief Print FCLib's interpretation of a Sierra input file (more 
+     *      at sierradump.c).
+     *
+     * \description
+     *
+     *    See sierradump.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup tearCompare tearCompare
+     * \brief Compare tears from two different datasets (more 
+     *      at tearCompare.c).
+     *
+     * \description
+     *
+     *    See tearCompare.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup tears tears
+     * \brief Report tear characterizations on a given dataset (more 
+     *      at tears.c).
+     *
+     * \description
+     *
+     *    See tears.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup threshBoundBox threshBoundBox
+     * \brief Get bounding boxes of thresholded regions 
+     *    (more at threshBoundBox.c).
+     *
+     * \description
+     *
+     *    See threshBoundBox.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup varNormalize varNormalize
+     * \brief Normalize a variable and rewrite dataset
+     *    (more at varNormalize.c).
+     *
+     * \description
+     *
+     *    See varNormalize.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup varSmooth varSmooth
+     * \brief Smooth a variable and rewrite dataset
+     *    (more at varSmooth.c).
+     *
+     * \description
+     *
+     *    See varSmooth.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup varStats varStats
+     * \brief Get variable statistics for dataset (more at varStats.c).
+     *
+     * \description
+     *
+     *    See varStats.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup volumeSegments volumeSegments
+     * \brief Get volumes of thresholded regions 
+     *    (more at volumeSegments.c).
+     *
+     * \description
+     *
+     *    See volumeSegments.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup windowVars windowVars
+     * \brief Window averagest he seq vars on a dataset
+     *    (more at windowVars.c).
+     *
+     * \description
+     *
+     *    See windowVars.c.
+     */
+
+//------------- top level group = Examples
+
+/**
+ * \defgroup Examples Examples
+ * \brief Examples of using the library.
+ *
+ * Here is an example of building ex1_intro assuming that FCLib, SAF and HDF5
+ * are all installed in /usr/local:
+ *
+\verbatim
+gcc -o ex1_intro ex1_intro.c -I/usr/local/bin/include \
+            -L/usr/local/bin/lib -lfc -lsafapi -lvbt -ldsl -lhdf5 -lz -lm
+\endverbatim 
+ */
+
+/**
+ * \ingroup Examples
+ * \defgroup example1 Example 1 - Intro
+ * \brief Annotated example of using the basic the FCLib interface.
+ *
+ * \description
+ *
+ *    See \ref ex1_intro.c.
+ */
+
+/**
+ * \ingroup Examples
+ * \defgroup example2 Example 2 - Access Big Data
+ * \brief Annotated example of accessing big data arrays.
+ *
+ * \description
+ *
+ *    See \ref ex2_bigDataAccess.c.
+ */
+
+/**
+ * \ingroup Examples
+ * \defgroup example3 Example 3 - Create a Characterization
+ * \brief Annotated example of creating your own characterization.
+ *
+ * \description
+ *
+ *    See \ref ex3_createCharactrztn.c.
+ */
+
+/**
+ * \ingroup Examples
+ * \defgroup elemDeath_ex Element Death Example
+ * \brief Annotated example of Element Death functions
+ *      
+ *
+ * \description
+ *
+ *    See \ref elemdeath_ex1.c.
+ */
+
+/**
+ * \ingroup Examples
+ * \defgroup seriesDemo Series Demo
+ * \brief Annotated example of series characterizations and comparisons.
+ *      
+ *
+ * \description
+ *
+ *    See \ref seriesDemo.c.
+ */

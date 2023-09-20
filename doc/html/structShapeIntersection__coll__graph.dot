@@ -1,0 +1,11 @@
+digraph G
+{
+  edge [fontname="FreeSans.ttf",fontsize=10,labelfontname="FreeSans.ttf",labelfontsize=10];
+  node [fontname="FreeSans.ttf",fontsize=10,shape=record];
+  Node1 [label="ShapeIntersection",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled" fontcolor="black"];
+  Node2 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="subtype\nshapeID\nmajor\nnumIntersections\nmeshID\ntype",fontname="FreeSans.ttf"];
+  Node2 [label="int",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node3 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="intersectedSides",fontname="FreeSans.ttf"];
+  Node3 [label="FC_SortedIntArray",height=0.2,width=0.4,color="red", fillcolor="white", style="filled",URL="$structFC__SortedIntArray.html"];
+  Node2 -> Node3 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="maxNumVal\nnumVal",fontname="FreeSans.ttf"];
+}

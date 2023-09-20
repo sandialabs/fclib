@@ -1,0 +1,58 @@
+Copyright (2000) Sandia Corporation. Under the terms of Contract
+DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains 
+certain rights in this software.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+  * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+
+  * Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the
+    distribution.
+
+  * Neither the name of Sandia nor the names of any contributors may
+    be used to endorse or promote products derived from this software
+    without specific prior written permission.
+
+  * Modified source versions must be plainly marked as such, and must
+    not be misrepresented as being the original software.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR CONTRIBUTORS BE LIABLE FOR 
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH 
+DAMAGE.
+
+============================================================================
+
+README for Feature Characterization Library (FCLib)
+
+The Feature Characterization Library (FCLib) is a toolkit for creating and
+applying feature characterizations to spatial-temporal datasets. Features are
+coherent structures, often called regions of interest, that persist over time
+in a dataset. Some examples of features include: vertex tubes in fluid
+dynamical systems, failure zones in mechanical systems, and hot spots in
+chemical systems. Feature characterization is the analysis of these features.
+
+The FCLib manual (doxygen generated) may be found in the doc directory,
+or can be built locally (see INSTALL). 
+
+Or read INSTALL or doxyfiles/FCLib_installation.html for compiling and
+installation instructions and RELEASE_NOTES or doxyfiles/FCLib_releaseNotest
+for information about this release.
+
+FCLib is a product of the FCDMF project (Feature Characterization using DMF)
+which in turn is part of the ASCI Data Discovery project at Sandia National
+Labs.  For more information about FCDMF and the latest versions of FCLib, go to
+http://fclib.ca.sandia.gov (this page is only accesible from tri-lab addresses)
+
+

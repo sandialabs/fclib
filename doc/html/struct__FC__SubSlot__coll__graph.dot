@@ -1,0 +1,21 @@
+digraph G
+{
+  edge [fontname="FreeSans.ttf",fontsize=10,labelfontname="FreeSans.ttf",labelfontsize=10];
+  node [fontname="FreeSans.ttf",fontsize=10,shape=record];
+  Node1 [label="_FC_SubSlot",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled" fontcolor="black"];
+  Node2 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="assoc",fontname="FreeSans.ttf"];
+  Node2 [label="FC_AssociationType",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node3 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="header",fontname="FreeSans.ttf"];
+  Node3 [label="_FC_SlotHeader",height=0.2,width=0.4,color="red", fillcolor="white", style="filled",URL="$struct__FC__SlotHeader.html"];
+  Node4 -> Node3 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="uID\nslotID\ncommitted",fontname="FreeSans.ttf"];
+  Node4 [label="int",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node5 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="fileInfo",fontname="FreeSans.ttf"];
+  Node5 [label="_FC_SubFileIOInfo",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$struct__FC__SubFileIOInfo.html"];
+  Node4 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="numMember\nmaxNumMember",fontname="FreeSans.ttf"];
+  Node6 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="mesh",fontname="FreeSans.ttf"];
+  Node6 [label="FC_Mesh",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structFC__Mesh.html"];
+  Node4 -> Node6 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="uID\nslotID",fontname="FreeSans.ttf"];
+  Node7 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="sia",fontname="FreeSans.ttf"];
+  Node7 [label="FC_SortedIntArray",height=0.2,width=0.4,color="red", fillcolor="white", style="filled",URL="$structFC__SortedIntArray.html"];
+  Node4 -> Node7 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="maxNumVal\nnumVal",fontname="FreeSans.ttf"];
+}

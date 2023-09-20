@@ -1,0 +1,20 @@
+digraph G
+{
+  edge [fontname="FreeSans.ttf",fontsize=10,labelfontname="FreeSans.ttf",labelfontsize=10];
+  node [fontname="FreeSans.ttf",fontsize=10,shape=record];
+  Node1 [label="_FC_SeqSlot",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled" fontcolor="black"];
+  Node2 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="ds",fontname="FreeSans.ttf"];
+  Node2 [label="FC_Dataset",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structFC__Dataset.html"];
+  Node3 -> Node2 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="uID\nslotID",fontname="FreeSans.ttf"];
+  Node3 [label="int",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node4 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="header",fontname="FreeSans.ttf"];
+  Node4 [label="_FC_SlotHeader",height=0.2,width=0.4,color="red", fillcolor="white", style="filled",URL="$struct__FC__SlotHeader.html"];
+  Node3 -> Node4 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="uID\nslotID\ncommitted",fontname="FreeSans.ttf"];
+  Node3 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="numStep",fontname="FreeSans.ttf"];
+  Node5 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="fileInfo",fontname="FreeSans.ttf"];
+  Node5 [label="_FC_SeqFileIOInfo",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$struct__FC__SeqFileIOInfo.html"];
+  Node6 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="coords",fontname="FreeSans.ttf"];
+  Node6 [label="void *",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node7 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="datatype",fontname="FreeSans.ttf"];
+  Node7 [label="FC_DataType",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+}

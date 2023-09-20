@@ -1,0 +1,176 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML4.0 Transitional//EN">
+
+<!--                                                             
+  Copyright (2000) Sandia Corporation. Under the terms of Contract
+  DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+  certain rights in this software.
+ 
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+ 
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the
+      distribution.
+
+    * Neither the name of Sandia nor the names of any contributors may
+      be used to endorse or promote products derived from this software
+      without specific prior written permission.
+  
+    * Modified source versions must be plainly marked as such, and must
+      not be misrepresented as being the original software.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+  ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR CONTRIBUTORS BE LIABLE FOR 
+  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
+  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+  OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH 
+  DAMAGE.
+-->
+
+<!-- 
+  $Source$
+  $Revision$ 
+  $Date$  
+-->
+
+<html>
+
+<head>
+   <title>Feature Characterization Library</title>
+</head>
+
+<body bgcolor="#ffffff" vlink="#0000ff" alink="#0000ff">
+
+<!-- The following line is commented out because it is being used inside
+     the doxygen documentation -->
+<!-- <h1 align="center">Feature Characterization Library</h1> -->
+
+<a name="intro"><h3>Introduction</h3></a>
+
+<p>
+One very common strategy for doing data analysis in spatial-temporal datasets
+is to focus in on regions of the dataset where interesting things are
+happening. If we define a feature as a coherent region that persists over time,
+this data analysis strategy becomes <em>feature-based data analysis</em>. The
+entire process of finding features, analyzing features, and using the results
+is called <em>feature characterization</em>.
+</p>
+
+<p> Although feature-based data analysis is common, the feature
+characterization process is not very well supported. Most users manually
+identify and analyze features, a process which is tedious and prone to
+errors. And when tools are created, they are usually one-off solutions that are
+difficult to reapply to new problems.
+
+<p>
+The goal of the <a target="_top" href=http://www.ca.sandia.gov/fcdmf>Feature
+Characterization project (FCDMF) </a> is to provide general resources for 
+the creation and use of feature characterizations. Our first product is the
+Feature Characterization Library (FCLib) which is a toolkit for creating 
+characterizations and characterization applications. The philosophy of
+FCLib is to automate as much of the tedious parts of doing characterizations
+as possible, while remaining flexible enough to create a wide range of
+characterizations. 
+</p>
+    
+<a name="highlights"><h3> Features (ha, ha) of the FCLib library: </h3></a>
+
+<p>
+FCLib consists of a library of routines and a few command-line tools.
+The library routines can be roughly divided into the following categories:
+</p>
+
+<ul>
+   <li> <em>data manipulation</em> - e.g. access to mesh coordinates and
+        variable data. </li>
+   <li> <em>feature processing</em> - e.g. creating and tracking 
+        features. </li>
+   <li> <em>characterization building blocks </em> - e.g. finding an element's
+        neighbors or calculating its volume. </li>
+   <li> <em>characterizations</em> - e.g. determine minimum and maximum values
+        of a variable in a feature. </li>
+</ul>
+
+<p>
+The categories necessarily overlap categories as one analyst's characterization
+will be another analyst's building block. The command-line tools include a few
+examples of generic and custom characterization applications built with FCLib.
+</p>
+
+<p>
+The biggest feature of the library is that it is built to be <em>feature
+aware</em>--that is, to understand and operate on features. Another important
+feature of the library is its simplified interface. The API was written to
+support multiple levels of users--from those who will use the built-in
+"check-box" characterizations (so called because there will eventually be a GUI
+that allows users to "check" the characterizations that they want) to more
+advanced users who wish to build their own characterizations.
+</p> 
+
+<p>
+FCLib is coded in C and operates on unstructured mesh data.
+</p>
+
+<a name="characterizations"><h3>Characterizations and Building Blocks</h3></a>
+
+<p>
+This is a sampling of some of the generic characterizations and
+characterization building blocks that are available in the library. They are
+categorized roughly by what type of data they operate on.
+<p>
+
+<ul> 
+   <li> Mesh topology based (mesh entities are vertices, edges, faces, or 
+        elements):
+      <ul>
+         <li> Get mesh entity children (e.g., get vertices that make up an
+              element). </li>
+	 <li> Get mesh entity parents (e.g., get elements that contain a 
+              vertex). </li>
+         <li> Get mesh entity neighbors. </li>
+         <li> Skin (e.g., get the entities that make up the outer layer 
+              of a set of mesh entities). </li> 
+         <li> Segment (separate a set of mesh entities into separate connected
+              components). </li>
+      </ul>
+   </li>
+   <li> Mesh coordinates based:
+      <ul>
+	 <li> Edge lengths, surface area, and region volumes. </li>
+	 <li> Bounding boxes. </li>
+	 <li> Centroid, variable-weighted centroid. </li>
+	 <li> Get mesh entities within a box or sphere. </li>
+	 <li> Kernel smooth variable. </li>
+      </ul>
+   </li>   
+   <li> Variable based:
+      <ul>
+         <li> Variable math (e.g., add two variables to get a third).</li>
+         <li> Threshold (e.g. get set of entities that pass threshold 
+              criteria). </li>
+         <li> Statistics (min, max, mean, standard deviation) </li>
+      </ul>
+   </li>
+   <li> Time based:
+      <ul>
+         <li> Feature tracking </li>
+         <li> Entity variable history </li>
+      </ul>
+   </li>
+</ul>
+
+<hr>
+<address>Last modified: $Date$ </address>
+
+</body>
+</html>
+

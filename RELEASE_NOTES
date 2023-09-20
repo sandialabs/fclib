@@ -1,0 +1,450 @@
+Copyright (2000) Sandia Corporation. Under the terms of Contract
+DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains 
+certain rights in this software.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+  * Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+
+  * Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the
+    distribution.
+
+  * Neither the name of Sandia nor the names of any contributors may
+    be used to endorse or promote products derived from this software
+    without specific prior written permission.
+
+  * Modified source versions must be plainly marked as such, and must
+    not be misrepresented as being the original software.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR CONTRIBUTORS BE LIABLE FOR 
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH 
+DAMAGE.
+
+==========================================================================
+
+FCLib Release Notes
+
+
+-------------------------------------------------------------------------------
+Latest Release
+-------------------------------------------------------------------------------
+
+
+Version 1.6.1 (10/31/2007)
+
+What's new:
+
+* Exodusio module:
+
+  o Reads in and writes out element and nodal attributes. These are FCLib's
+    non-seq vars.
+  o Reads in and writes out element sets.
+  o These changes require Exodus 4.61 or later.
+
+* Variable module:
+
+  o Handling conversion of Exodus non-component vars into component vars on-
+    demand only. New functions fc_getOrGenerate(Seq)VariableByName will do this
+    automatically for seq/non-seq vars. New auxiliary (or non-automatic)
+    functions fc_get(seq)VariablesByName will obtain the component variables.
+    Does not handle global yet. Currently this only supports x,y,z options and
+    not tensor component options.
+  o Mesh variables can now be converted from one association type to another
+    through copy(Seq)VariableWithNewAssociation(). These conversion functions
+    take a simple average of neighboring data values in a source variable to
+    build each value of the destination variable. This averaging is
+    particularly useful when the user needs to plot smooth data represented by
+    vertex values, but only has data values at the elements.
+
+* Varmath module:
+
+  o Added four new functions to fill in missing operations involving constants
+    and sequence constants.
+
+* Tools:
+
+  o fcdump now supports various command line filters that enable users to
+    search for specific objects within a file.
+  o New Tool "fcswapAssociation" can be used to convert Element variables to
+    Vertex variables and vice versa.
+  o varNormalize will calculate and normalize the von mises stress and
+    pressure, using the stress component variables, if the von mises stress and
+    pressure do not exist in the dataset.
+  o maxStress will also output the per step value normalized to the max for
+    that mesh.
+  o exodump handles nodal and elements attributes and elem sets.
+  o All tools except for fc2ensight automatically discover and convert both seq
+    and non-seq components to component vars. See new commands in variable.
+  o tools no longer support saf
+
+* Misc:
+
+  o CVS has been replaced with SVN
+  o fc_printXXX functions for data structures now have option to print out in
+    exponential notation with 5 digits of precision.
+  o Test suite now uses only exodus files, since SAF has been removed.
+
+
+Deprecations:
+
+* SAF (and HDF5) and SAF related tools and functionalities have been removed.
+* fc_getSeqVariableByName now does not automatically combine component
+  variables. See new functions in variable that replace this
+* FClibGUI code and references have been removed as this part of the
+  development has been sidelined.
+* .names file support in Exodus has been removed.
+
+Bug Fixes:
+
+* None
+
+Known Issues:
+
+* fc2ensight has not been updated to utilize the new component variable
+  functions. This tool is no longer supported and may be removed since SAF has
+  been removed.
+
+
+
+-------------------------------------------------------------------------------
+Previous Releases
+-------------------------------------------------------------------------------
+
+
+Version 1.4.0 (10/20/06)
+
+What's new:
+
+* Global variables are now supported by FCLib. Like mesh variables, global
+  variables can be sequence or non-sequence variables. Global variables have
+  the association type FC_AT_WHOLE_DATASET and can be tested for using
+  fc_isVariableGlobal(). Most variable characterizations and building blocks
+  will work on global variables.
+* Tools:
+
+  o New tool "fcinfo" can be used to get info about when and how (e.g. compile
+    flags) the library was built.
+  o New tool "maxStress" reports stress in regions in tension and in
+    compression.
+  o New tool "geomExtract" extracts the geometry of a single step of a dataset
+    into a stateless Exodus file.
+  o New tool "tearCompare" uses output of two runs of "tears" to compare how
+    the tears match up.
+  o Tool "tears" now has optional flag to write out shape info and use that to
+    classify tears (Break, Tunnel, Pit, etc).
+  o Tool "gaplines" now splits gaplines into sets based on the sides of the
+    meshes involved.
+  o Tool "gaplines" can now drop lines attached to dead elements.
+  o Tool "fcconvert" can now convert to the same file type. This can be used to
+    "FCLib-alize" datasets to FCLib's data model.
+
+* Storage module:
+
+  o New capabilities for FC_SortedIntArray: get numValue and a copy of the
+    values, get front and back values, pop from front and back, conversion to
+    other simple data objects.
+  o New simple data object: FC_SortedBlobArray. It's usage is similar to
+    FC_SortedIntArray but it manages pointers to arbitrary data "blobs" instead
+    of ints.
+
+* Varmath module:
+
+  o New function to calculate Von Mises stress and pressure from the symmetric
+    stress tensor.
+  o Two "missing" functions added to cover all variable/sequence variable
+    combinations.
+
+* Shape module:
+
+  o New function to get mean and std dev of the normals of the individual faces
+    making up a side.
+  o New functions to convert a current shape into a new shape: 1) based upon a
+    different angle, and 2) reduce the number of existing sides to a specified
+    number.
+  o New clear function that deallocates a shape's memory, but keeps the subsets
+    valid.
+  o New init function that blanks out a shape's fields without doing
+    deallocation.
+
+* File IO:
+
+  o The LSDyna Reader now supports beams (1D line elements) and shells (2D quad
+    elements).
+  o Both the LSDyna Reader and the Exodus Reader/Writer have been updated to
+    use the new global variable interface.
+
+
+Interface changes of special notice (you'll probably have to change your code):
+
+* The arguments and behavior for all fc_getXByName() functions have changed
+  (where X refers to Dataset, Mesh, Subset, Sequence, and the variety of
+  Variable types). Previously, they would return the first matching item, or an
+  error if there were no matching items. This was undesirable for two reasons:
+  1) you could never get a handle to a second object if it existed, and 2) not
+  finding an object of the specified name is not always considered an error.
+  Now the functions return the number of matching items and an array of those
+  items, which can be empty.
+* FC_AT_WHOLE has been split into FC_AT_WHOLE_MESH and FC_AT_WHOLE_DATASET. You
+  should be able to safely replace with FC_AT_WHOLE_MESH, but in some cases of
+  WHOLE you may rather be using the new global variables.
+
+Deprecations:
+
+* Linked lists have gone away in favor of new sorted int and blob arrays.
+* Shape:
+
+  o All screw specific subset and mesh building functions have been removed,
+    with the exception of fc_createScrewOrder. The user will have to reproduce
+    the screw shape building by explicitly creating the order and calling
+    reorder shape, akin to how all other reorderings are done.
+  o fc_createThinShapeOrder has been replaced by
+    fc_createLargeAndOpposingSidesOrder and
+    fc_createLargeAndNonAdjacentSidesOrder.
+  o fc_projectedSubsetElementBoundingBoxIntersection has dropped the mesh from
+    the argument list.
+  o fc_createAscendingAreaOrder has been replaced by
+    fc_createDescendingAreaOrder
+  o getPlanarSideNormal now takes the shape and side ID as arguments, rather
+    than the side subsets.
+
+
+Bug Fixes:
+
+* Tool "dyna2names.pl" no longer has problems reading single character names.
+* LSDyna reader can now handle d3plot plot files that have gaps in the
+  numbering (e.g. d3plot, d3plot02, d3plot04 ...).
+* Fixed bug in floating point comparisons that caused divide by zero if one
+  argument was zero and the other was negative.
+* Fixed bug in fc_isSubsetSuperset that returned a positive result if the
+  potential superset has more total values than the potential subset has and
+  all of which are less than those in the potential subset
+* Improved subset names for the shapes returned by multi-shape creating
+  methods, such as fc_getSubsetShapes and fc_getMeshShapes. Now subsets are
+  named relative to the shape they are in, rather than apparently randomly.
+* Tool "gaplines" now exits gracefully if no gaplines are found.
+
+
+
+Version 1.3.0 (07/25/06)
+
+What's new:
+
+* Tools:
+
+  o New tool "screwBreaks" reports when screws break, and calculates estimate
+    of how close screws are to breaking by projecting dead elments to the
+    cross-section.
+  o New tool "gaplines" creates a mesh of zero length lines between two meshes
+    at time zero, and then reports the statistics of the length of the lines
+    over time (gapping will cause lines to become nonzero in length). Also
+    creates an output file for visualization of the gap lines.
+  o New tool "extents" reports bounding boxes of the meshes and the dataset.
+  o New tool "fcconvert" can convert between different dataset file formats.
+    "fc2exo" is a wrapper that creates an ExodusII file.
+  o Improved tool "tears". Can now: combine tears across meshes based on
+    proximity; request analysis of a specified timestep instead of just the
+    last timespet; request analysis of only specified meshes; provide multiple
+    "death" criteria; request damage-weighted volumes; and reports overall
+    summary at end of output.
+  o All tools now support the -d displacement flag if appropriate. Underlying
+    routines from gome module now have displaced versions.
+
+* New and improved building blocks:
+
+  o New data type "Sorted Int Array" in SimpleDataTypes module. Can be used to
+    maintain a unique list of integers, is self-expanding, and has O(nlog(n))
+    lookup time.
+  o Shape module revamped. It now uses a struct, FC_Shape, to hold all shape
+    information. There are also major performances increases and an interface
+    cleanup (see deprecations below for some function name changes).
+  o Element death module revamped. Some functions split into two separate ones.
+    Interfaces changed to use new FC_Shape struct.
+  o Proximity methods added to Geometry module.
+  o Some methods in Geometry module have been expanded to operate on arrays of
+    meshes or subset.
+  o Added function fc_calcSquaredEuclideanDistance() for performance coding
+    (can save a sqrt operation).
+  o Added convenience function fc_getSequenceCoordsAsDataType() to fetch
+    sequence data as requested type
+  o New functions fc_doSubsetsIntersect() and fc_isSubsetSuperSet()
+  o Set of functions added to util module to do dbl or flt "significant digit"
+    aware comparisons like "==" and ">".
+
+* File IO:
+
+  o Dataset's names and their filenames are now two separate entities. (Used to
+    use dataset filename as the name, now use description within file if it
+    exists.)
+  o Added .names file support to LSDyna reader. Tool dyna2names can be used to
+    create a names file from an LSDyna input file (.k file).
+  o New function fc_rewriteDataset() can write a dataset already linked to a
+    file to a new file; it is no longer necessary to copy a dataset before
+    writing.
+  o XML parsing is available via libxml2.
+  o Bounding Box file format (for ParaView Lookmark importing) has been changed
+    to an xml file.
+
+
+Bug Fixes:
+
+* File IO module:
+
+  o The LS-Dyna reader now starts generically named variables with '1' instead
+    of '0' to better agree with other tools (e.g. 'elem_var_0' is now
+    'elem_var_1').
+  o LSDyna reader can now handle datasets where there is only 1 global
+    variable.
+  o LSDyna reader can now handle datasets where the element data for a single
+    mesh is not all in 1 consecutive block.
+  o Mesh IDs from some file formats (Exodus LSDyna) are saved and reused when
+    rewriting a dataset.
+  o The Exodus reader is currently hacked. Currently vector variables are read
+    in a separate components. When fc_getSeqVariableByName() is called, the
+    reader will stitch the components together and hand a vector variable back.
+    Someday the Exodus reader will read in the variables as vectors at the
+    beginning.
+
+* Geom module:
+
+  o Fixed roundoff error in _fc_calcTriArea() by switching algorithms
+
+* Shape module:
+
+  o Fix in fc_createSideAdjacencyMatrix. This affects other calls in the Shape
+    Module as well as the ElementDeath example.
+
+
+Deprecations:
+
+* Geom module:
+
+  o fc_projectedElementBoundingBoxIntersection now takes the projection normal
+    as FC_Coords rather than FC_Vector
+  o fc_projectedSubsetElementBoundingBoxIntersection now takes the projection
+    normal as FC_Coords rather than FC_Vector
+
+* Shape module:
+
+  o fc_createSideAdjacencyMatrix has been replaced by a method of the same
+    name, but different signature.
+  o fc_getSubsetSides has been replaced by fc_getSubsetShapes.
+  o fc_getMeshSides has been replaced by fc_getMeshShapes.
+  o fc_calcDistanceMatrix has changed representation for infinite distance
+    items to -1.
+
+
+
+
+Version 1.2.0 (01/25/06)
+
+What's new:
+
+* File IO changes: not just SAF anymore!
+
+  o Reads and writes Exodus II data files.
+  o Reads LSDyna data files.
+  o File type is automatically detected during read, or can be specified.
+  o FCLib can be built without SAF or Exodus II support, but testing cannot be
+    done without SAF.
+  o Upgraded to SAF 2.0.2 and HDF5 1.7.45. **NOTE this version of SAF depends
+    on a developmental version of HDF5 and may not work for any other version.
+
+* API changes:
+
+  o SAF specific tools (except safdump) are now fc general tools and their
+    names are prefixed with 'fc' instead of 'saf' (e.g. saf2ensight is now
+    fc2ensight and works on all file types readable by FCLib).
+  o fc_getNumMeshEntity() has been changed to fc_getMeshNumEntity() to follow
+    the general API naming conventions.
+
+* More characterization building blocks, including:
+
+  o Separate deformation out from the displacement variable.
+  o Get the diameter of a subset.
+  o New module 'series' for sequence-based analysis routines. Also additions to
+    the 'sequence' module to work with the 'series' module.
+  o Math of sequence variables.
+  o New module 'elemdeath' for dead regions of elements. Also additions to
+    other modules to work with the 'elemdeath' module. These include methods
+    enabling characterization of the shape of the dead region and comparison of
+    it to the live region by such things as determination of the intersection
+    of dead region with the original mesh sides and projection of the dead
+    region onto a live a region. These additional methods can be found in the
+    'geom' and 'topo' modules, and the new 'shape' module below.
+  o New module 'shape' for determining information about shapes. Mainly
+    intended to work with elemdeath module. e.g., given particular
+    characteristics of the shape of a mesh, are there particular things about
+    the dead element region that are of interest ?
+
+* GUI moved to separate package.
+* Library compiles under 64 bit linux.
+* Changed internal mesh struts to reduce memory usage (by 85% for the tears
+  tool). Did this by making auxilliary information like edges/face, neighbors,
+  etc. build lazily and independent of each other.
+* Some performance issues addressed when there are really large numbers of
+  variables.
+
+
+
+Version 1.0.0 (01/04/05)
+
+No major changes, just final tuning for release. This version has been spell-
+checked, memory-checked and memory-leak-checked. Coverage test also indicated
+that 84% of the library is being tested by the unit and regressions tests.
+
+
+Version 0.9.0 (12/12/04)
+
+The Data API is settling down and new characterization building blocks have
+been added.
+What's new:
+
+* More introductory documentation available on main Doxygen page.
+* API changes:
+
+  o Names of big data routines that return pointers that callers should NOT
+    release are post-fixed with 'Ptr'.
+  o Tidied up Feature & Feature Tracking interface.
+  o Tidied up Varmath interface.
+
+* More characterizations building blocks, including:
+
+  o Displaced mesh versions of geometric routines.
+  o More bounding box support (check intersect, displaced and subset version).
+  o Subset versions of statistics routines.
+  o Slice variable data by location in addition to time (i.e. can get point
+    history).
+  o Get skin routines.
+  o Get edge lengths/face areas/region volumes.
+
+* Now fully supports edges & faces.
+* Prototype SWIG interface in interfaces.
+* Prototype GUI in interfaces/java.
+* Reasonably complete testing (unit + regression tests = ~82% coverage).
+
+
+
+Version 0.9.0-dev (9/04)
+
+This is not an official release--it is being used to test documentation and
+creation of FCLib web pages on the FCDMF web site.
+
+
+Version 0.8.0 (8/10/04)
+
+Data structures finished & release mechanism in place.
+
+-------------------------------------------------------------------------------
+     Last modified: $Date: 2007/03/14 06:27:59 $

@@ -1,0 +1,27 @@
+digraph structs
+{
+  edge [fontname="FreeSans.ttf",fontsize=8,labelfontname="FreeSans.ttf",labelfontsize=8];
+  node [fontname="FreeSans.ttf",fontsize=10,shape=record];
+rankdir=LR;
+  Node5 [label="Sequence",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__Sequence.html"];
+  Node10 [label="Table (Private)",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__PrivateTable.html"];
+  Node6 [label="Mesh",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__Mesh.html"];
+  Node0 [label="Data Interface",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled" fontcolor="black"];
+  Node7 [label="Subset",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__Subset.html"];
+  Node3 [label="Library",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__Library.html"];
+  Node9 [label="File IO",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__FileIO.html"];
+  Node8 [label="Variable",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__Variable.html"];
+  Node2 [label="Handles",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__Handles.html"];
+  Node1 [label="FCLib API",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__API.html"];
+  Node4 [label="Dataset",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__Dataset.html"];
+  Node1->Node0 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+  Node0->Node2 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+  Node0->Node3 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+  Node0->Node4 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+  Node0->Node5 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+  Node0->Node6 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+  Node0->Node7 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+  Node0->Node8 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+  Node0->Node9 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+  Node0->Node10 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+}

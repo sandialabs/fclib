@@ -1,0 +1,33 @@
+digraph G
+{
+  edge [fontname="FreeSans.ttf",fontsize=10,labelfontname="FreeSans.ttf",labelfontsize=10];
+  node [fontname="FreeSans.ttf",fontsize=10,shape=record];
+  Node1 [label="SpotWeldType",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled" fontcolor="black"];
+  Node2 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="nodeset_names\nspotweld_names\nsideset_names",fontname="FreeSans.ttf"];
+  Node2 [label="char **",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node3 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="numBrokens\nfail_stepIds",fontname="FreeSans.ttf"];
+  Node3 [label="int *",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node4 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="exponent\nnormal_scale\nucritnorm\nucrittang\ntangent_scale",fontname="FreeSans.ttf"];
+  Node4 [label="double",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node5 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="fail_times\ngroup_fails",fontname="FreeSans.ttf"];
+  Node5 [label="double *",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node6 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="spotwelds",fontname="FreeSans.ttf"];
+  Node6 [label="FC_SierraSpotWeldInfo",height=0.2,width=0.4,color="red", fillcolor="white", style="filled",URL="$structFC__SierraSpotWeldInfo.html"];
+  Node4 -> Node6 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="exponent\nnormal_scale\ntangent_scale",fontname="FreeSans.ttf"];
+  Node7 -> Node6 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="nodeset\nsurface_name\ntangent\nnormal\nnodeset_name\nsurface\nname",fontname="FreeSans.ttf"];
+  Node7 [label="char",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node8 -> Node6 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="tangentId\nnormalId\ndecay_cycles",fontname="FreeSans.ttf"];
+  Node8 [label="int",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node7 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="name",fontname="FreeSans.ttf"];
+  Node9 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="side_displs\nnode_displs",fontname="FreeSans.ttf"];
+  Node9 [label="FC_Variable",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structFC__Variable.html"];
+  Node8 -> Node9 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="uID\nslotID",fontname="FreeSans.ttf"];
+  Node8 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="tangentId\nnumStep\nnumSpotWeld\nnormalId\nnumBrokenTotal\ndecay_cycles",fontname="FreeSans.ttf"];
+  Node10 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="sidesets\nnodesets",fontname="FreeSans.ttf"];
+  Node10 [label="FC_Subset",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structFC__Subset.html"];
+  Node8 -> Node10 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="uID\nslotID",fontname="FreeSans.ttf"];
+  Node11 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="fails",fontname="FreeSans.ttf"];
+  Node11 [label="double **",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node12 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="normal_name\ntangent_name",fontname="FreeSans.ttf"];
+  Node12 [label="char *",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+}

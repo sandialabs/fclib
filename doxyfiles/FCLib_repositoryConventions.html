@@ -1,0 +1,244 @@
+<!--                                                             
+  Copyright (2000) Sandia Corporation. Under the terms of Contract
+  DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+  certain rights in this software.
+ 
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+ 
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the
+      distribution.
+
+    * Neither the name of Sandia nor the names of any contributors may
+      be used to endorse or promote products derived from this software
+      without specific prior written permission.
+  
+    * Modified source versions must be plainly marked as such, and must
+      not be misrepresented as being the original software.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+  ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHORS OR CONTRIBUTORS BE LIABLE FOR 
+  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
+  DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+  OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH 
+  DAMAGE.
+-->
+
+
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML4.0 Transitional//EN">
+<html>
+
+  <head>
+    <title>FCLib Repository Conventions</title>
+  </head>
+
+  <body bgcolor="#ffffff" vlink="#0000ff" alink="#0000ff">
+   
+  This document outlines our conventions for using 
+  <a href=http://subversion.tigris.org/>Subversion (SVN)</a>
+  to manage the
+  development and release of FCLib.
+
+  <!--  ------------------------------------------------  -->	
+  <h3> <hr> Table of Contents <hr> </h3>
+  <!--  ------------------------------------------------  -->
+   
+  <ol>
+    <li> <a href="#mini-svn">Mini-SVN Review</a>   
+    <li> <a href="#check-out">Release Numbers</a>  
+    <li> <a href="#release">Release Mechanics</a>
+  </ol>
+ 
+  <!--  ------------------------------------------------  -->
+  <h3> <hr> <a name="mini-svn">1. Mini SVN Review</a> <hr> </h3>
+  <!--  ------------------------------------------------  -->
+
+    <p>Here we review some concepts of general SVN usage here before getting into
+      the FCLib specific conventions. SVN is a revision control system
+      that provides features similar to CVS. In 2007 we switched from CVS
+      to SVN because SVN (1) provides url-based access to the repo, (2)
+      uses a database backend for managing files, and (3) separates meta
+      data about the repo from the files in the repo (for more
+      information, consult your 
+      <a href=http://subversion.tigris.org/>Subversion (SVN)</a>
+      documentation).</P>
+
+    <p>While everything is just a "file in a directory somewhere in the
+      repo" in SVN, it is helpful to create snapshots of the project
+      at different points in time. We follow the standard directory
+      convention for managing a subversion repository:</p>
+    
+  <dl>
+    <dt>
+      <b>Trunk</b>
+       <dd>
+         The main development of the project (e.g., the most recent
+         work) takes place in the trunk. 
+       </dd>
+    </dt>
+
+    <dt>
+      <b>Branch</b>
+       <dd>
+         Periodically there is a need to branch off from the trunk to
+         explore whether a new, significant feature will be
+	 worthwhile. Experimental code branches are created in the 
+         branches subdirectory of a project.
+       </dd>
+    </dt>
+
+    <dt>
+      <b>Tags</b>
+       <dd>
+         At major points in a design's lifetime, it is useful to take
+         a snapshot of the design and tag it for internal/external
+ 	 release. The tags subdirectory of a project contains these
+         snapshots. In general, we treat tagged directories as frozen
+         designs and do not edit them.
+        </dd>
+    </dt>
+
+   </dl>
+
+
+    
+
+
+  <TABLE BORDER=0>
+    <TR> <TH COLSPAN=3 ALIGN=LEFT>Misc Useful Commands:</TH>
+    </TR>
+
+    <TR VALIGN="top">
+      <TD WIDTH=200><tt>svn stat [file]</tt></TD>
+      <TD WIDTH=10>-</TD>
+      <TD>Get info about revisions and sticky bits on a file.</TD>
+    </TR>
+
+    <TR VALIGN="top">
+      <TD><tt>svn stat -v [file]</tt></TD>
+      <TD>-</TD>
+      <TD>Same as above plus shows all tags on file.</TD>
+     </TR>
+
+    <TR VALIGN="top">
+      <TD><tt>svn log [file]
+      <TD>-</TD>
+      <TD>Get info about tags and revision comments.</TD>
+     </TR>
+
+    <TR VALIGN="top">
+      <TD><tt>svn update -r[branch]</tt></TD>
+      <TD>-</TD>
+      <TD>Check out head of branch (sticky!).</TD>
+     </TR>
+
+    <TR VALIGN="top">
+      <TD><tt>svn update -A</tt></TD>
+      <TD>-</TD>
+      <TD>Check out head of default branch and unset all sticky bits.</TD>
+     </TR>
+
+    <TR VALIGN="top">
+      <TD><tt>svn diff [file]</tt></TD>
+      <TD>-</TD>
+      <TD>Diff between working file and last checked in version).</TD>
+     </TR>
+
+    <TR VALIGN="top">
+      <TD><tt>svn diff -r[rev] [file]</tt></TD>
+      <TD>-</TD>
+      <TD>Diff between working file and the specified revision of the
+	file.</TD>
+     </TR>
+
+    <TR VALIGN="top">
+      <TD><tt>svn diff -kk -r[rev] 
+	  <br>&nbsp;&nbsp;&nbsp;-r[rev] [file]</tt></TD>
+      <TD>-</TD>
+      <TD>Diff two revisions of a file (<tt>-kk</tt> prevents keyword
+	substitution).</TD>   
+  </TABLE>
+
+
+
+
+
+ 
+
+  <!--  ------------------------------------------------  -->
+  <h3> <hr> <a name="release">2. Release Numbers</a><hr> </h3>
+  <!--  ------------------------------------------------  -->
+  <p>Historically, FCLib releases have been labeled using a standard
+  3-part numbering system. Releases are listed as fclib-x.y.z,
+  where x, y, and z are the major, minor, and version numbers.
+  Updates are cumulative so that v1.0.3 will also have updates from 
+  v1.0.1 and v1.0.2. Revision numbers used to be tied closely to
+  branches in the repository when we used CVS. However, we relaxed
+  this constraint when we switched to SVN (due to SVN's built-in
+  revision IDs). We now update the release numbers when create a
+  new tag in the repo.</p>
+  
+
+
+  <!--  ------------------------------------------------  -->
+  <h3> <hr> <a name="releaseMechanics">3. Release Mechanics</a> <hr> </h3>
+  <!--  ------------------------------------------------  -->
+
+  Please also read the release instructions in the 
+  <a href="releaseHowTo_page.html">Release "How To"</a> page
+  listed on related pages in the FCLib Manual. They explain how to update
+  the release notes at the same time.
+
+  <p>The specific procedure for generating a release is (commands apply to entire repository):
+
+  <p>
+  <ol>
+  <li>Make sure you are ready for a release:
+    <ul>
+      <li>
+	Verify that you have the exact snapshot that you want to release 
+	in your working directory and that it has been committed. (Don't 
+	forget to make sure that all tests are passing.)
+      </li>
+      <li>
+	Update FCLib_releaseNotes.html and commit.
+      </li>
+      <li>
+	Remove '-dev' from the version number in Makefile.include and
+	commit.
+      </li>
+    </ul>
+   </li>
+  <li>Copy the trunk to the tag directory with the new release
+	number<br>
+  <pre>
+svn copy http://path/to/repo/fclib/trunk http://path/to/repo/fclib/tags/release-1.1.1
+svn commit
+</pre>
+  </li>
+  <li>Update the Trunk's version number in Makefile.include and commit.</li>
+  </ol> 
+
+
+
+
+
+ <hr>
+
+
+<address>Last modified: $Date: 2007/10/29 19:20:00 $ </address>
+
+
+  </body>
+</html>

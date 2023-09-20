@@ -1,0 +1,15 @@
+digraph structs
+{
+  edge [fontname="FreeSans.ttf",fontsize=8,labelfontname="FreeSans.ttf",labelfontsize=8];
+  node [fontname="FreeSans.ttf",fontsize=10,shape=record];
+rankdir=LR;
+  Node2 [label="Floating Point Comparisons",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__PublicFloatingPoint.html"];
+  Node0 [label="Utilities",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled" fontcolor="black"];
+  Node3 [label="File Path Processing",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__FilePathUtilities.html"];
+  Node1 [label="FCLib API",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__API.html"];
+  Node4 [label="Misc Utilities",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$group__MiscUtilities.html"];
+  Node1->Node0 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+  Node0->Node2 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+  Node0->Node3 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+  Node0->Node4 [shape=plaintext, color="midnightblue", dir="back", style="solid"];
+}

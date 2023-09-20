@@ -1,0 +1,21 @@
+digraph G
+{
+  edge [fontname="FreeSans.ttf",fontsize=10,labelfontname="FreeSans.ttf",labelfontsize=10];
+  node [fontname="FreeSans.ttf",fontsize=10,shape=record];
+  Node1 [label="SuperTear",height=0.2,width=0.4,color="black", fillcolor="grey75", style="filled" fontcolor="black"];
+  Node2 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="tears",fontname="FreeSans.ttf"];
+  Node2 [label="Tear",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structTear.html"];
+  Node3 -> Node2 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="data",fontname="FreeSans.ttf"];
+  Node3 [label="Tear_Characterization",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structTear__Characterization.html"];
+  Node4 -> Node3 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="damaged_numCell\nnumCell\nnumDim\ndead_numCell",fontname="FreeSans.ttf"];
+  Node4 [label="int",height=0.2,width=0.4,color="grey75", fillcolor="white", style="filled"];
+  Node5 -> Node2 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="shape_intersection",fontname="FreeSans.ttf"];
+  Node5 [label="ShapeIntersection",height=0.2,width=0.4,color="red", fillcolor="white", style="filled",URL="$structShapeIntersection.html"];
+  Node4 -> Node5 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="subtype\nshapeID\nmajor\nnumIntersections\nmeshID\ntype",fontname="FreeSans.ttf"];
+  Node4 -> Node2 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="stepID\nmeshID\ntearID",fontname="FreeSans.ttf"];
+  Node6 -> Node2 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="region\nexposed",fontname="FreeSans.ttf"];
+  Node6 [label="FC_Subset",height=0.2,width=0.4,color="black", fillcolor="white", style="filled",URL="$structFC__Subset.html"];
+  Node4 -> Node6 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="uID\nslotID",fontname="FreeSans.ttf"];
+  Node3 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="data",fontname="FreeSans.ttf"];
+  Node4 -> Node1 [dir=back,color="darkorchid3",fontsize=10,style="dashed",label="numTear\ntearID",fontname="FreeSans.ttf"];
+}
