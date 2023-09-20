@@ -1,0 +1,32 @@
+--- exodusii-4.71/Makefile.standalone	2007-06-27 11:30:31.000000000 -0600
++++ exodusii-4.71-mod/Makefile.standalone-mod	2007-11-02 02:25:43.330894000 -0600
+@@ -89,7 +89,7 @@
+ RANLIB = ranlib
+ OS_TYPE = sunos
+ 
+-AR        = CC -xar -o
++AR        = ar -crv
+ 
+ ifeq ($(COMPILER),GNU)
+ BITS    = 32
+@@ -100,7 +100,7 @@
+ BITS      = 32
+ CC        = cc
+ FC        = f77
+-CCOPTIONS  = -xtarget=ultra2 -xarch=v9 -g -ftrap=common -Xc
++CCOPTIONS  = -g
+ F77OPTIONS = -xtarget=ultra2 -xarch=v9 -g -ftrap=common -errtags=INVOKE -C 
+ endif
+ endif
+@@ -197,9 +197,8 @@
+ # Use include files locates in exodusii/cbind/include
+ LOC_EXOII_INC = -I../../cbind/include -I../../forbind/include
+ 
+-NETCDF_INC = -I$(ACCESS)/inc
+-
+-NETCDF_LIB_DIR = $(ACCESS)/lib
++NETCDF_INC = -I$(BUNDLE_DIR)/include
++NETCDF_LIB_DIR = $(BUNDLE_DIR)/lib
+ NETCDF_LIB = -L$(NETCDF_LIB_DIR) -lnetcdf
+ 
+ 

@@ -64,7 +64,16 @@ LIBXML2CONFIG = /usr/bin/xml2-config
 # For ExodusII: Location of Exodus II & netcdf Installation
 # Set HOME or set INC and LIB paths separately (variables used for build are
 # NETCDF_INC_DIR, NETCDF_LIB_DIR, EXODUS_INC_DIR, and EXODUS_LIB_DIR).
-NETCDF_HOME = /usr/local/exodusii-4.17-bundle
+
+# NEW: use the path of the bundle by default
+mkfile_path := $(abspath $(lastword $(MAKEFILE_LIST)))
+mkfile_dir := $(dir $(mkfile_path))
+NETCDF_HOME = ${mkfile_dir}/tpls/bundle
+
+# OLD: assume a really old version of exodus happens to be installed
+#NETCDF_HOME = /usr/local/exodusii-4.17-bundle
+
+# Only set these if you don't have a bundle and have everything
 NETCDF_INC_DIR = ${NETCDF_HOME}/include
 NETCDF_LIB_DIR = ${NETCDF_HOME}/lib
 NETCDF_LIBS = -lnetcdf
