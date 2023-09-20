@@ -254,6 +254,27 @@ FC_ReturnCode fc_displacedGeomSmoothSeqVariable(int numMesh, FC_Mesh* meshes,
                        int doLocalSmooth, FC_Variable*** smooth_seq_vars);
 
 
+
+
+// Containment evaluation
+int fc_getIntersectionBetweenRayAndTriangle(
+     double ray_origin[3], double ray_direction[3],
+     double tri_vert0[3],  double tri_vert1[3], double tri_vert2[3],
+     double *t, double *u, double *v);     
+  
+FC_ReturnCode fc_doesElementContainPoint(
+     FC_Mesh m,  int element_id,  double *point,
+     int *contain_type);
+
+FC_ReturnCode fc_getElementsThatContainPoint(
+  FC_Mesh m, int *element_mask,  double point[3],  
+  int *num_elem_ids, int **elem_ids);
+
+FC_ReturnCode fc_getElementsThatContainPointFromSubset(
+  FC_Subset subset,  double point[3], 
+  int *num_elem_ids, int **elem_ids);
+
+
 #ifdef __cplusplus
 }
 #endif

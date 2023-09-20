@@ -7228,6 +7228,318 @@ START_TEST(seq_var_smooth)
 }
 END_TEST
   
+
+//
+START_TEST(containment)
+{
+
+
+
+#define NUM_POINTS (13)
+#define NUM_MESH (2)
+#define MAX_ELEM (32)
+#define NUM_BAD_MESH (6)
+
+  int i,j,k,m;
+  FC_Dataset dataset;
+  FC_ReturnCode rc;
+  int result;
+
+  int num_hit=-1;
+  int *hit_ids;
+
+  FC_Mesh mesh[NUM_MESH];
+
+
+  double test_points[NUM_POINTS*3]= 
+    { //Cube-specific
+      0.0, 0.0, 0.0,    //cube0
+      0.5, 0.5, 0.5,    //cube0 center
+      0.5, 0.0, 0.0,    //cube0 face
+      0.5, 0.0, 0.5,    //cube0 face
+      1.5, 1.5, 0.5,    //cube4 center
+      1.0, 1.0, 1.0,    //corner among 8 cubes
+      3.,  3.,  3.,     //Far cube corner
+      3.,  3.,  3.0001, //Outside of far cube
+      -5.0, 0.5, 0.5,   //Outside, far
+      //Tet-specific
+      0.9, 0.1, 0.1,     //cube0, tet0
+      0.1, 0.9, 0.1,     //cube0, tet1
+      0.1, 0.1, 0.9,     //cube0, tet2
+      0.9, 0.9, 0.9      //cube0, tet3
+      
+    };
+	
+		  
+  typedef struct {
+    int num;
+    int ids[MAX_ELEM]; //Should be upper limit
+  } res_t;
+
+  res_t res[NUM_MESH*NUM_POINTS] = 
+    {
+      //Hex Mesh 
+      {1,{0}},
+      {1,{0}},
+      {1,{0}},
+      {1,{0}},
+      {1,{4}},
+      {8,{0,1,3,4,9,10,12,13}},
+      {1,{26}},
+      {0,{}},
+      {0,{}},
+      {1,{0}},
+      {1,{0}},
+      {1,{0}},
+      {1,{0}},
+      
+      //Tet Mesh
+      {3,{0,1,2}},
+      {0,{}},
+      {1,{0}},
+      {2,{0,2}},
+      {0,{}},
+      {1,{3}},
+      {0,{}},
+      {0,{}},
+      {0,{}},
+      {1,{0}},
+      {1,{1}},
+      {1,{2}},
+      {1,{3}}
+    };
+
+  int *mask[NUM_MESH];
+  FC_Subset subset[NUM_MESH];
+
+  
+  FC_Mesh   bad_mesh[NUM_BAD_MESH];
+  FC_Subset bad_subset[NUM_BAD_MESH];
+  
+
+  rc = fc_createDataset("dataset", &dataset);
+  fail_unless(rc==FC_SUCCESS, "abort: failed to create dataset");
+
+  { //[0] Cubes: Create 3x3 cubes
+    double lo[3] = {0.0, 0.0, 0.0};
+    double hi[3]  = {3.0, 3.0, 3.0};
+    rc = fc_createSimpleHexMesh(dataset, "cubes", 3,3,3, lo, hi, &mesh[0]);
+    fail_unless(rc == FC_SUCCESS, "couldn't create simple hex");
+    
+    rc = fc_createSubset(mesh[0], "subCube", FC_AT_ELEMENT, &subset[0]);
+    fail_unless(rc == FC_SUCCESS, "couldn't create subset");
+
+    mask[0] = (int *)malloc(27*sizeof(int));
+    for(i=0;i<27;i++)
+      (mask[0])[i] = (i&1); //even/odd
+
+    rc = fc_addMaskMembersToSubset(subset[0], 27, mask[0]);
+    fail_unless(rc == FC_SUCCESS, "couldn't set subset");
+
+
+  } 
+  { //[1] Tets: four pairs of tets. These are right-angled tets,
+    //Take a cube and put tet center point at 4 corners (ie prevent
+    //overlap). Cube as lower verts a,b,c,d and upper 
+    //verts e,f,g,h (arranged clockwise). 
+    double t_coords[] = { //Bottom, up on B
+                           0.0, 0.0, 0.0,
+                           1.0, 0.0, 0.0,
+			   1.0, 1.0, 0.0,
+			   1.0, 0.0, 1.0,
+			   //Bottom, up on D
+			   0.0, 0.0, 0.0,
+			   1.0, 1.0, 0.0,
+			   0.0, 1.0, 0.0,
+			   0.0, 1.0, 1.0,
+			   //Top, down on E
+			   0.0, 1.0, 1.0,
+			   1.0, 0.0, 1.0,
+			   0.0, 0.0, 1.0,
+			   0.0, 0.0, 0.0,
+			   //Top, down on G
+			   0.0, 1.0, 1.0,
+			   1.0, 0.0, 1.0,
+			   1.0, 1.0, 1.0,
+			   1.0, 1.0, 0.0};
+    int t_conn[] = { 0,1,2,3,  4,5,6,7,  8,9,10,11, 12,13,14,15};
+
+    rc = fc_createMesh(dataset, "tets", &mesh[1]);
+    fail_unless(rc == FC_SUCCESS, "couldn't create mesh");
+    
+    rc = fc_setMeshCoords(mesh[1], 3, 16, t_coords);
+    fail_unless(rc == FC_SUCCESS, "couldn't set mesh coords");
+
+    rc = fc_setMeshElementConns(mesh[1], FC_ET_TET, 4, t_conn);
+    fail_unless(rc == FC_SUCCESS,  "couldn't set mesh conns");
+
+
+    rc = fc_createSubset(mesh[1], "subTet", FC_AT_ELEMENT, &subset[1]);
+    fail_unless(rc == FC_SUCCESS, "couldn't create subset");
+
+    mask[1] = (int *)malloc(4*sizeof(int));
+    for(i=0;i<4;i++)
+      (mask[1])[i] = (i&1); //even/odd
+
+    rc = fc_addMaskMembersToSubset(subset[1], 4, mask[1]);
+    fail_unless(rc == FC_SUCCESS, "couldn't set subset");
+  }
+  
+
+  { //Create bad meshes.. Should die if we have DIM=2 or anything < tets
+    double bad_coords[30]; //enough coords to cover below
+    int t_conns1[] = { 0,1, 1,2, 3,4 }; //lines
+    int t_conns2[] = { 0,1,2, 3,4,5, 6,7,8 }; //triangles
+    int t_conns3[] = { 0,1,2,3,  2,3,4,5,  4,5,6,7 }; //quads
+
+    typedef struct {
+      char *name;
+      int   dim;
+      FC_ElementType et;
+      int *conns;
+    } bad_t;
+
+    bad_t b[NUM_BAD_MESH] = {
+      {"bad0", 2, FC_ET_LINE, t_conns1},
+      {"bad1", 2, FC_ET_TRI,  t_conns2 },
+      {"bad2", 2, FC_ET_QUAD, t_conns3 },
+      {"bad3", 3, FC_ET_LINE, t_conns1 },
+      {"bad4", 3, FC_ET_TRI,  t_conns2 },
+      {"bad5", 3, FC_ET_QUAD, t_conns3 } };
+
+
+    for(i=0;i<NUM_BAD_MESH;i++){
+      rc = fc_createMesh(dataset, b[i].name, &bad_mesh[i]);                        fail_unless(rc == FC_SUCCESS, "couldn't create mesh");
+      rc = fc_setMeshCoords(bad_mesh[i], b[i].dim, 16, bad_coords);                fail_unless(rc == FC_SUCCESS, "couldn't set mesh coords");
+      rc = fc_setMeshElementConns(bad_mesh[i], b[i].et, 3, t_conns1);              fail_unless(rc == FC_SUCCESS, "couldn't set mesh conns");
+      rc = fc_createSubset(bad_mesh[i], b[i].name, FC_AT_ELEMENT, &bad_subset[i]); fail_unless(rc == FC_SUCCESS, "couldn't create subset");
+      rc = fc_addMemberToSubset(bad_subset[i],0);                                  fail_unless(rc == FC_SUCCESS, "couldn't create subset");
+    }
+  }
+
+
+  //Bad input
+  rc = fc_doesElementContainPoint(FC_NULL_MESH, 0, test_points, &result);
+  fail_unless(rc!=FC_SUCCESS, "failed to catch null mesh");
+  rc = fc_doesElementContainPoint(mesh[0], -1, test_points, &result);
+  fail_unless(rc!=FC_SUCCESS, "failed to catch negative element id");
+  rc = fc_doesElementContainPoint(mesh[0], 30, test_points, &result);
+  fail_unless(rc!=FC_SUCCESS, "failed to catch big element id");
+  rc = fc_doesElementContainPoint(mesh[0], 0, NULL, &result);
+  fail_unless(rc!=FC_SUCCESS, "failed to catch null point pointer");
+  rc = fc_doesElementContainPoint(mesh[0], 0, test_points, NULL);
+  fail_unless(rc!=FC_SUCCESS, "failed to handle null return pointer");
+
+  rc = fc_getElementsThatContainPoint(FC_NULL_MESH, NULL, test_points, &num_hit, &hit_ids);
+  fail_unless(rc!=FC_SUCCESS, "failed to catch null mesh");
+  rc = fc_getElementsThatContainPoint(mesh[0], NULL, NULL, &num_hit, &hit_ids);
+  fail_unless(rc!=FC_SUCCESS, "failed to catch null coord");
+  rc = fc_getElementsThatContainPoint(mesh[0], NULL, test_points, NULL, &hit_ids);
+  fail_unless(rc!=FC_SUCCESS, "failed to catch null return number pointer");
+
+  rc = fc_getElementsThatContainPointFromSubset(FC_NULL_SUBSET, test_points, &num_hit, &hit_ids);
+  fail_unless(rc!=FC_SUCCESS, "failed to catch null subset");
+  rc = fc_getElementsThatContainPointFromSubset(subset[0], NULL, &num_hit, &hit_ids);
+  fail_unless(rc!=FC_SUCCESS, "failed to catch null coord");
+  rc = fc_getElementsThatContainPointFromSubset(subset[0], test_points, NULL, &hit_ids);
+  fail_unless(rc!=FC_SUCCESS, "failed to catch null return number pointer");
+
+  for(i=0; i<NUM_BAD_MESH; i++){
+    rc = fc_doesElementContainPoint(bad_mesh[i], 0, test_points, &result);                         fail_unless(rc!=FC_SUCCESS, "failed to catch bad mesh");
+    rc = fc_getElementsThatContainPoint(bad_mesh[i], NULL, test_points, &num_hit, &hit_ids);       fail_unless(rc!=FC_SUCCESS, "failed to catch null mesh");
+    rc = fc_getElementsThatContainPointFromSubset(bad_subset[i], test_points, &num_hit, &hit_ids); fail_unless(rc!=FC_SUCCESS, "failed to catch bad subset");
+  }
+
+  //Compare against expected results
+  for(i=0; i<NUM_MESH;i++){
+    for(j=0; j<NUM_POINTS; j++){
+
+      int num_hit1=-1;
+      int num_hit2=-1;
+      int *hit_ids1;
+      int *hit_ids2;
+      int  contain_type=-1;
+
+      //Test individual element
+      rc = fc_doesElementContainPoint(mesh[i], 0, &test_points[j*3], &contain_type);
+      fail_unless(rc == FC_SUCCESS, "failed to do individual search");
+      
+      if(contain_type>0){
+	fail_unless( (res[i*NUM_POINTS+j].num>0) && 
+		     (res[i*NUM_POINTS+j].ids[0] == 0), "bad individual comparison");
+      } else{
+	if(res[i*NUM_POINTS+j].num > 0){
+	  fail_unless((res[i*NUM_POINTS+j].ids[0] != 0), "bad individual comparison");
+	}
+      }
+
+      //Test basic getElementsThatContainPoint
+      rc = fc_getElementsThatContainPoint(mesh[i], NULL, &test_points[j*3], &num_hit, &hit_ids);
+      fail_unless(rc == FC_SUCCESS, "failed to do bulk search");
+ 
+      
+      //printf("point %d [%d/%d]:", j, num_hit,res[i*NUM_POINTS + j].num);
+      //for(k=0;k<num_hit;k++)
+      //printf("%d (%d) ",hit_ids[k],res[i*NUM_POINTS+j].ids[k]);
+      //printf("\n");
+
+
+      fail_unless((num_hit == res[i*NUM_POINTS + j].num), "wrong number of points returned");
+
+      for(k=0;k<num_hit;k++){
+	fail_unless(hit_ids[k] == res[i*NUM_POINTS+j].ids[k], "wrong id returned");
+      }
+
+      if(hit_ids) free(hit_ids);
+
+      //Test mask and subset versions
+      rc = fc_getElementsThatContainPoint(mesh[i], mask[i], &test_points[j*3], &num_hit1, &hit_ids1);
+      fail_unless(rc == FC_SUCCESS, "failed to do masked bulk search");
+
+      rc = fc_getElementsThatContainPointFromSubset(subset[i], &test_points[j*3], &num_hit2, &hit_ids2);
+      fail_unless(rc == FC_SUCCESS, "failed to do subset search");
+      fail_unless(num_hit1 == num_hit2, "wrong id returned");
+
+      //printf("Num hit1: %d: ", num_hit1);
+      //for(k=0;k<num_hit1;k++)
+      //printf(" %d", hit_ids1[k]);
+      //printf("\n");
+
+      for(k=0,m=0; k<num_hit1; k++, m++){
+	fail_unless(m<res[i*NUM_POINTS + j].num, "extra vals in result");
+	while(!(res[i*NUM_POINTS+j].ids[m] & 0x01)){ //skip if even value, 
+	  m++;
+	  fail_unless(m<res[i*NUM_POINTS + j].num, "extra vals in result");
+	}
+	//printf("Compare %d-%d: %d vs %d\n", k,m, res[i*NUM_POINTS+j].ids[m], hit_ids1[k]);
+	fail_unless(res[i*NUM_POINTS+j].ids[m] == hit_ids1[k], "mask version mismatch");
+	fail_unless(res[i*NUM_POINTS+j].ids[m] == hit_ids2[k], "subset version mismatch");
+      }
+
+      if(hit_ids1) free(hit_ids1);
+      if(hit_ids2) free(hit_ids2);
+    }
+  }
+
+  for(i=0;i<NUM_MESH;i++){
+    free(mask[i]);
+    //delete dataset
+  }
+
+
+
+  rc = fc_deleteDataset(dataset);
+  fail_unless(rc == FC_SUCCESS, "failed to delete dataset at end of test");
+
+
+#undef NUM_POINTS 
+#undef NUM_MESH 
+#undef MAX_ELEM 
+#undef NUM_BAD_MESH
+}
+END_TEST
+
+
 // Populate the Suite with the tests
 
 Suite *geom_suite(void)
@@ -7245,6 +7557,8 @@ Suite *geom_suite(void)
   TCase *tc_proximity = tcase_create(" - Proximity ");
   TCase *tc_geom_neighs = tcase_create(" - Geometric Neighbors ");
   TCase *tc_smooth = tcase_create(" - Variable Smoothing ");
+  TCase *tc_containment = tcase_create(" - ElementContainment ");
+
 
   suite_add_tcase(suite, tc_general);
   tcase_add_checked_fixture(tc_general, geom_setup, geom_teardown);
@@ -7305,6 +7619,12 @@ Suite *geom_suite(void)
   tcase_add_test(tc_smooth, element_smooth);
   tcase_add_test(tc_smooth, entity_smooth);
   tcase_add_test(tc_smooth, seq_var_smooth);
+
+
+  suite_add_tcase(suite, tc_containment);
+  tcase_add_checked_fixture(tc_containment, geom_setup, geom_teardown);
+  tcase_add_test(tc_containment, containment);
+  
 
 
   return suite;

@@ -63,15 +63,32 @@ FC_ReturnCode fc_setMeshCoordsPtr(FC_Mesh mesh, int dim, int numVert,
 FC_ReturnCode fc_setMeshElementConnsPtr(FC_Mesh mesh, FC_ElementType elemType, 
                       int numElem, int *conn_p);
 
+FC_ReturnCode fc_setSphereDisplacementVariable( FC_Variable displacement_var,
+		      FC_Coords new_center,  double new_radius);  
+
+   
+
 // other ways to get new meshes
 //-------------------------------
 FC_ReturnCode fc_copyMesh(FC_Mesh src_mesh, FC_Dataset dest_ds, 
-                      char* newMeshName, FC_Mesh* new_mesh);
+			  char* newMeshName, 
+			  int doCopyVar, int doCopySeqVar,
+			  int doCopySubset, int doCopySeqSubset,
+			  FC_Mesh* new_mesh);
 FC_ReturnCode fc_createSubsetMesh(FC_Subset src_subset, FC_Dataset dest_ds, 
-		      int doStrict, char* newName, FC_Mesh* subset_mesh);
+				  int doStrict, 
+				  int doCopyVar, int doCopySeqVar,
+				  int doCopySubset, int doCopySeqSubset,
+				  char* newName, FC_Mesh* subset_mesh,
+				  FC_Variable* vertmap,
+				  FC_Variable* elemmap);
 FC_ReturnCode fc_createSimpleHexMesh(FC_Dataset dataset, char* newMeshName, 
                       int N, int M, int P, double* lower_coords, 
                       double* upper_coords, FC_Mesh* new_mesh);
+
+FC_ReturnCode fc_createSphereMesh(FC_Dataset dataset, char *newName, FC_Coords center,   
+		      double radius, int requestedNodes, FC_Mesh *new_mesh );
+
 
 // get meshes
 //-------------------------------

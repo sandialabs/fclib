@@ -67,7 +67,7 @@ well.
 
 There are no required dependencies for FCLib. Optional dependencies include:
 
-* File IO w/ ExodusII -- Requires ExodusII 4.61 or greater and NetCDF 3.6.2 or
+* File IO w/ ExodusII -- Requires ExodusII 4.71 or greater and NetCDF 3.6.2 or
   greater -- ExodusII is a file format library developed by Sandia National
   Labs and is available (bundled with NetCDF) at our web site http://
   fclib.ca.sandia.gov.

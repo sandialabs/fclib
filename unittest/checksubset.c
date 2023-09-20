@@ -35,10 +35,10 @@
  */
 
 /**
- * \file checksubset.c
+ * \file checksubset
  * \brief Unit tests for \ref Subset module.
  *
- * $Source: /usr/local/Repositories/fcdmf/fclib/unittest/checksubset.c,v $
+ * $Source: /usr/local/Repositories/fcdmf/fclib/unittest/checksubset.c,v $1
  * $Revision: 1.61 $ 
  * $Date: 2006/10/19 03:14:53 $
  *
@@ -49,6 +49,7 @@
  *
  * \modifications
  *    - 03/31/04 RM, created.
+ *    - 03/04/08 + ongoing ACG sequence subsets
  */
 
 #include <stdlib.h>
@@ -70,10 +71,13 @@ static void subset_setup(void) {
   int i;
   FC_Dataset dataset;
   FC_Mesh mesh;
+  FC_Sequence sequence;
   int numElemType = 8, numElem = 2;
   int numVertPerType[8] = { 2, 3, 4, 6, 5, 6, 8, 12 }; 
   char names[8][40] = { "point mesh", "line mesh", "tri mesh", "quad mesh",
 			"tet mesh", "pyramid mesh", "prism mesh", "hex mesh" };
+  int numSequence = 2, numSteps[2]= { 5, 10 };
+  char seqNames[2][40] = { "time", "time2" };
   FC_ElementType elemTypes[8] = { FC_ET_POINT,  FC_ET_LINE,  FC_ET_TRI,
 		      	          FC_ET_QUAD,   FC_ET_TET,   FC_ET_PYRAMID,
 			          FC_ET_PRISM,  FC_ET_HEX };
@@ -109,6 +113,15 @@ static void subset_setup(void) {
     fail_unless(rc == FC_SUCCESS, "failed to set vertex coords");
     rc = fc_setMeshElementConns(mesh, elemTypes[i], numElem, conns[i]);
     fail_unless(rc == FC_SUCCESS, "failed to set element conns");
+  }
+
+  //sequences
+  for (i = 0; i < numSequence; i++ ) {
+    rc = fc_createSequence(dataset, seqNames[i], &sequence);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to create sequence");
+    rc = fc_setSequenceCoords(sequence, numSteps[i], FC_DT_DOUBLE,
+			      coords);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to set sequence cooords");
   }
 }
 
@@ -200,6 +213,94 @@ START_TEST(slot_new_delete)
   //fail_unless(rc == FC_SUCCESS, "failed to delete dataset at end of test");
 }
 END_TEST
+
+// Test that creating and deleting slots modifies table as expected
+// Deleting should open up slots that get reused
+START_TEST(slot_new_delete_seq)
+{
+  FC_ReturnCode rc;
+  int i, j;
+  int num = 7;
+  // uID_incs = diff between current uID and startID
+  int uID_start, uID_incs[7] = { 0, 7, 2, 8, 4, 9, 6 };
+  FC_Dataset dataset, *returnDatasets;
+  FC_Sequence sequence, *returnSequences;
+  FC_Mesh mesh, *returnMeshes;
+  int numReturnMeshes, numReturnDatasets, numReturnSequences;
+  int numStep;
+  FC_Subset *seqSubsets[7];
+  
+  // get dataset and mesh
+  rc = fc_getDatasetByName(dataset_name,&numReturnDatasets,
+			   &returnDatasets);
+  fail_unless(rc == FC_SUCCESS, "aborted - cant get dataset by name");
+  fail_unless(numReturnDatasets == 1,
+	      "failed to find unique dataset by name");
+  dataset = returnDatasets[0];
+  free(returnDatasets);
+
+  rc = fc_getSequenceByName(dataset, "time", &numReturnSequences,
+			    &returnSequences);
+  fail_unless(rc == FC_SUCCESS, "aborted - cant get sequence by name");
+  fail_unless(numReturnSequences == 1,
+	      "failed to find unique sequences by name");
+  sequence = returnSequences[0];
+  free(returnSequences);
+
+  rc = fc_getMeshByName(dataset, "point mesh", &numReturnMeshes,
+			&returnMeshes);
+  fail_unless(rc == FC_SUCCESS, "aborted - cant get mesh by name");
+  fail_unless(numReturnMeshes == 1,
+	      "failed to find unique mesh by name");
+  mesh = returnMeshes[0];
+  free(returnMeshes);
+
+  // create parent datset & mesh
+  //rc = fc_createDataset("fake", &dataset);
+  //fail_unless(rc == FC_SUCCESS, "failed to create dataset");
+  //rc = fc_createMesh(dataset, "fake", &mesh);
+  //fail_unless(rc == FC_SUCCESS, "failed to create mesh");
+
+  // Create num
+  for (i = 0; i < num; i++) {
+    rc = fc_createSeqSubset(mesh, sequence, "fake", FC_AT_VERTEX, &numStep, &seqSubsets[i]);
+    fail_unless(rc == FC_SUCCESS, "failed to create subset");
+  }
+  uID_start = seqSubsets[0][0].uID;
+
+
+  // Delete "odd" slots
+  for (i = 1; i < num; i+=2) {
+    rc = fc_deleteSeqSubset(numStep,seqSubsets[i]);
+    fail_unless(rc == FC_SUCCESS, "failed to delete subset");
+    free(seqSubsets[i]);
+  }
+
+  // Create some more (fills in the cracks)
+  for (i = 1; i < num; i+=2) {
+    rc = fc_createSeqSubset(mesh, sequence, "fake", FC_AT_VERTEX, &numStep, &seqSubsets[i]);
+    fail_unless(rc == FC_SUCCESS, "failed to create subset");
+ }
+
+  // Check slotID and uID
+  for (i = 0; i < num; i++) {
+    for (j = 0; j < numStep; j++){
+      fail_unless(seqSubsets[i][j].slotID == i*numStep+j, "mismatch of slot id");
+      fail_unless(seqSubsets[i][j].uID == uID_start + uID_incs[i]*numStep+j,
+		  "mismatch of uID");
+    }
+  }
+
+  // cleanup
+  for (i = 0; i < num; i++ )
+    free(seqSubsets[i]);
+
+  // cleanup is done in the fixture
+  //rc = fc_deleteDataset(dataset);
+  //fail_unless(rc == FC_SUCCESS, "failed to delete dataset at end of test");
+}
+END_TEST
+
 
 // test creating and deleting subsets, also test querying mesh
 // for subsets before, inbetween and after.
@@ -1396,7 +1497,7 @@ START_TEST(copy_test)
   fail_unless(maxNumMember == 12, "abort: dataset is not as expected");
   
   // make second mesh to copy to
-  rc = fc_copyMesh(mesh1, dataset, "copy mesh", &mesh2);
+  rc = fc_copyMesh(mesh1, dataset, "copy mesh", 1, 1, 1, 1, &mesh2);
   fail_unless(rc == FC_SUCCESS, "abort: failed to copy mesh");
 
   // make a third mesh we shouldn't be able to copy to - just 1 element
@@ -1914,6 +2015,713 @@ START_TEST(print)
 }
 END_TEST 
 
+
+// test creating and deleting seq subsets, also test querying mesh
+// for subsets before, inbetween and after.
+START_TEST(seq_create_get_delete)
+{
+  FC_ReturnCode rc;
+  int i, j, k, m;
+  FC_Dataset dataset,*returnDatasets;
+  FC_Sequence *sequences;
+  FC_Mesh *meshes, mesh;
+  int numReturnDatasets, numMesh, numSequence;
+  int numSeqSubset = 10, temp_numSeqSubset, numSteps[2], temp_numStep, *temp_numSteps;
+  FC_Subset *seqSubsets[2*10], **temp_seqSubsets, *temp_seqSubset;
+  FC_Subset *badSeqSubset, badSubset = { 999, 999 };
+  char names[2][10][100] = { {"one", "two", "three", "four", "five", "six",
+			      "seven", "eight", "nine", "ten" },
+			     { "un", "deux", "trois", "quatre", "cinq",
+			       "six (french)", "sept", "huit", "neuf", "dix"}};
+  char newName[100] = { "sparkly new" };
+  _FC_SubSlot *subSlot, *subSlot2;
+  int numAssoc = 5;
+  FC_AssociationType assocs[5] = { FC_AT_VERTEX, FC_AT_EDGE, FC_AT_FACE,
+				   FC_AT_ELEMENT, FC_AT_WHOLE_MESH };
+
+
+  // get dataset,sequences and meshes
+  rc = fc_getDatasetByName(dataset_name,&numReturnDatasets,
+			   &returnDatasets);
+  fail_unless(rc == FC_SUCCESS, "aborted - cant get dataset by name");
+  fail_unless(numReturnDatasets == 1,
+	      "failed to find unique dataset by name");
+  dataset = returnDatasets[0];
+  free(returnDatasets);
+  rc = fc_getSequences(dataset, &numSequence, &sequences);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get sequences");
+  fail_unless(numSequence == 2, "abort: expected 2 sequences");
+  rc = fc_getMeshes(dataset, &numMesh, &meshes);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create mesh");
+  fail_unless(numMesh == 8, "abort: expected 8 meshes");
+  for (i = 0; i < numSequence; i++) 
+    fc_getSequenceNumStep(sequences[i], &numSteps[i]);
+
+  // Expect error to create subset of assoc FC_AT_WHOLE_DATASET
+  rc = fc_createSeqSubset(meshes[0], sequences[0], names[0][0], FC_AT_WHOLE_DATASET,
+			  &temp_numStep, &temp_seqSubset);
+  fail_unless(rc != FC_SUCCESS, "should fail to create WHOLE_DATASET sub");
+  fail_unless(temp_seqSubset == NULL, "fail should return NULL");
+
+  //loop over meshes and assoc types
+  for ( i = 0; i < numMesh; i++ ){
+    for ( m = 0; m < numAssoc; m++ ) {
+      rc = fc_createSeqSubset(meshes[i], sequences[0], names[0][0], assocs[m],
+			      &temp_numStep, &temp_seqSubset);
+      if ( (i == 0 && (m == 1 || m == 2)) /* point mesh - no edges,faces */
+	   || (i == 1 && m == 2) ) { /* line mesh - no faces */
+	fail_unless(rc != FC_SUCCESS, "should fail to create seq subset");
+	fail_unless(temp_seqSubset == NULL, "should return NULL when fail");
+      } else {
+	fail_unless(rc == FC_SUCCESS, "should create seq subset");
+	rc = fc_deleteSeqSubset(temp_numStep,temp_seqSubset);
+	fail_unless(rc == FC_SUCCESS, "should delete seq subset");
+	free(temp_seqSubset);
+      }
+    }
+  }
+
+
+  // loop over all mesh types using FC_AT_VERTEX
+  for (i = 0; i < numMesh; i++) { 
+    mesh = meshes[i];
+
+    //create some seq subsets for each sequence
+    for (j = 0; j < numSequence; j++) {
+      for (k = 0; k < numSeqSubset; k++) {
+	int idx = j*numSeqSubset + k;
+	rc = fc_createSeqSubset(mesh, sequences[j], names[j][k],
+				FC_AT_VERTEX,
+				&temp_numStep, &seqSubsets[idx]);
+	fail_unless(rc == FC_SUCCESS, "failed to create seqSubset");
+	fail_unless(temp_numStep == numSteps[j], "mismatch in numStep");
+	for (m = 0; m < numSteps[j]; m++)
+	  fail_unless(!FC_HANDLE_EQUIV(seqSubsets[idx][m], FC_NULL_SUBSET),
+		      "created subset should not = FC_NULL_SUBSET");
+      }
+    }
+
+    //get seq subsets (should be numSeqSubset*numSequence);
+    // (will come out in same order they were written)
+    rc = fc_getSeqSubsets(mesh, &temp_numSeqSubset, &temp_numSteps, 
+			    &temp_seqSubsets);
+    fail_unless(rc == FC_SUCCESS, "failed to get seq subsets");
+    fail_unless(temp_numSeqSubset == numSeqSubset*numSequence, 
+		"mismatch of numSeqSubsets");
+    for (j = 0; j < numSequence; j++) {
+      for (k = 0; k < numSeqSubset; k++) {
+	int idx = j*numSeqSubset + k;
+	subSlot = _fc_getSubSlot(temp_seqSubsets[idx][0]);
+	fail_unless(FC_HANDLE_EQUIV(subSlot->sequence, sequences[j]),
+		    "mismatch of sequence handle");
+	fail_unless(temp_numSteps[idx] == numSteps[j],
+		    "mismatch of numStep");
+	for (m = 0; m < temp_numSteps[idx]; m++)
+	  fail_unless(FC_HANDLE_EQUIV(temp_seqSubsets[idx][m], 
+				      seqSubsets[idx][m]), 
+		      "mismatch of subset handles");
+	free(temp_seqSubsets[idx]);
+      }
+    }
+    free(temp_numSteps);
+    free(temp_seqSubsets);
+    rc = fc_getNumSeqSubset(mesh, &temp_numSeqSubset);
+    fail_unless(rc == FC_SUCCESS, "failed to get num seq subsets");
+    fail_unless(temp_numSeqSubset == numSeqSubset*numSequence, 
+		"mismatch of numSeqSubsets");
+    
+
+    // test fc_getSeqSubsetByName()
+    for (j = 0; j < numSequence; j++) {
+      for (k = 0; k < numSeqSubset; k++) {
+	int idx = j*numSeqSubset + k;
+	rc = fc_getSeqSubsetByName(mesh, names[j][k], &temp_numSeqSubset,
+				     &temp_numSteps, 
+				     &temp_seqSubsets);
+	fail_unless(rc == FC_SUCCESS, "failed to get subset by name");
+	fail_unless(temp_numSeqSubset == 1, "wrong number of matching subsets");
+	subSlot = _fc_getSubSlot(temp_seqSubsets[0][0]);
+	fail_unless(FC_HANDLE_EQUIV(subSlot->sequence, sequences[j]),
+		    "mismatch of sequence handle");
+	fail_unless(temp_numSteps[0] == numSteps[j], "mismatch of numStep");
+	for (m = 0; m < temp_numSteps[0]; m++)
+	  fail_unless(FC_HANDLE_EQUIV(temp_seqSubsets[0][m], seqSubsets[idx][m]),
+		      "mismatch of subset handles");
+	free(temp_seqSubsets[0]);
+	free(temp_seqSubsets);
+	free(temp_numSteps);
+      }
+    }
+
+    //temporarily create a new seq subset to check array return
+    //make one the same as the 0th one, but on the first sequence
+    rc = fc_createSeqSubset(mesh, sequences[1], names[0][0], FC_AT_VERTEX,
+			      &temp_numStep, &temp_seqSubset);
+    fail_unless(rc == FC_SUCCESS, "failed to create seqSubset");
+    fail_unless(temp_numStep == numSteps[1], "mismatch in numStep");
+    for (m = 0; m < numSteps[1]; m++)
+      fail_unless(!FC_HANDLE_EQUIV(temp_seqSubset[m], FC_NULL_SUBSET),
+		  "created subset should not = NULL_SUBSET");
+
+    rc = fc_getSeqSubsetByName(mesh, names[0][0],
+				 &temp_numSeqSubset,
+				 &temp_numSteps,
+				 &temp_seqSubsets);
+    fail_unless(rc == FC_SUCCESS, "failed to get subset by name");
+    fail_unless(temp_numSeqSubset == 2, "wrong number of matching seq subset");
+    subSlot = _fc_getSubSlot(temp_seqSubsets[0][0]);
+    subSlot2 = _fc_getSubSlot(temp_seqSubsets[1][0]);
+    fail_unless(((FC_HANDLE_EQUIV(subSlot->sequence, sequences[0]) &&
+		  FC_HANDLE_EQUIV(subSlot2->sequence, sequences[1])) ||
+		 (FC_HANDLE_EQUIV(subSlot->sequence, sequences[1]) &&
+		  FC_HANDLE_EQUIV(subSlot2->sequence, sequences[0]))),
+		"mismatch of sequence handle");
+    j = !(FC_HANDLE_EQUIV(subSlot->sequence, sequences[0]));
+    fail_unless(temp_numSteps[0] == numSteps[j] &&
+		temp_numSteps[1] == numSteps[!j], "mismatch of numStep");
+    for (m = 0; m < temp_numSteps[j]; m++){
+      fail_unless(FC_HANDLE_EQUIV(temp_seqSubsets[j][m], seqSubsets[0][m]),
+		  "mismatch of subset handles");
+    }
+    for (m = 0; m < temp_numSteps[!j]; m++){
+      fail_unless(FC_HANDLE_EQUIV(temp_seqSubsets[!j][m], temp_seqSubset[m]),
+		  "mismatch of subset handles");
+    }
+
+    fc_deleteSeqSubset(temp_numStep,temp_seqSubset);
+    free(temp_seqSubset);
+    
+    for (m = 0; m < temp_numSeqSubset; m++){
+      free(temp_seqSubsets[m]);
+    }
+    free(temp_seqSubsets);
+    free(temp_numSteps);
+
+    // change the name of the first sequence
+    // also test negative example of fc_getSeqSubsetByName
+    rc = fc_changeSeqSubsetName(numSteps[0], seqSubsets[0], newName);
+    fail_unless(rc == FC_SUCCESS, "failed to change seq subset name");
+    rc = fc_getSeqSubsetByName(mesh, names[0][0], &temp_numSeqSubset,
+				 &temp_numSteps,
+				 &temp_seqSubsets);
+    fail_unless(rc == FC_SUCCESS, "old name should work");
+    fail_unless(temp_numSeqSubset == 0 && temp_numSteps == NULL &&
+		temp_seqSubsets == NULL, "old name should find no match");
+    rc = fc_getSeqSubsetByName(mesh, newName, &temp_numSeqSubset,
+				 &temp_numSteps, &temp_seqSubsets);
+    fail_unless(rc == FC_SUCCESS, "new name should work for find");
+    fail_unless(temp_numSeqSubset ==1 ,"wrong number of matching subsets");
+    fail_unless(temp_numSteps[0] == numSteps[0], "mismatch of numStep");
+    for (j = 0; j < numSteps[0]; j++)
+      fail_unless(FC_HANDLE_EQUIV(temp_seqSubsets[0][j], seqSubsets[0][j]),
+		"mismatch of subset handle");
+    free(temp_seqSubsets[0]);
+    free(temp_seqSubsets);
+    free(temp_numSteps);
+
+
+    // delete half of the seq subsets (alternate)
+    for (j = 0; j < numSequence; j++) {
+      for (k = 0; k < numSeqSubset; k+=2) {
+	int idx = j*numSeqSubset + k;
+	rc = fc_deleteSeqSubset(numSteps[j], seqSubsets[idx]);
+	fail_unless(rc == FC_SUCCESS, "failed to delete seq subset");
+	free(seqSubsets[idx]);
+      }
+    }
+
+    // get seq subsets (should be numSeqSubset*numSequence/2);
+    fc_getSeqSubsets(mesh, &temp_numSeqSubset, &temp_numSteps, &temp_seqSubsets);
+    fail_unless(rc == FC_SUCCESS, "failed to get seq subsets");
+    fail_unless(temp_numSeqSubset == numSeqSubset*numSequence/2, 
+		"mismatch of numSeqSubset");
+    for (j = 0; j < numSequence; j++) {
+      for (k = 0; k < numSeqSubset/2; k++) {
+	int idx = j*numSeqSubset/2 + k; // into temp array
+	int idx_orig = j*numSeqSubset + 2*k + 1; // into original array
+	subSlot = _fc_getSubSlot(temp_seqSubsets[idx][0]);
+	fail_unless(FC_HANDLE_EQUIV(subSlot->sequence, sequences[j]),
+		    "mismatch of sequence handle");
+	fail_unless(temp_numSteps[idx] == numSteps[j],
+		    "mismatch of numStep");
+	for (m = 0; m < temp_numSteps[idx]; m++)
+	  fail_unless(FC_HANDLE_EQUIV(temp_seqSubsets[idx][m],
+				      seqSubsets[idx_orig][m]), 
+		      "mismatch of subset handles");
+	free(temp_seqSubsets[idx]);
+      }
+    }
+    free(temp_numSteps);
+    free(temp_seqSubsets);
+
+   // delete remaining seq subsets on first sequence
+    for (k = 1; k < numSeqSubset; k+=2) {
+      rc = fc_deleteSeqSubset(numSteps[0], seqSubsets[k]);
+      fail_unless(rc == FC_SUCCESS, "failed to delete subset");
+      free(seqSubsets[k]);
+    }
+    
+    // get seq subsets (should be numSeqSubset*(numSequence-1)/2);
+    fc_getSeqSubsets(mesh, &temp_numSeqSubset, &temp_numSteps, &temp_seqSubsets);
+    fail_unless(rc == FC_SUCCESS, "failed to get seq subsets");
+    fail_unless(temp_numSeqSubset == numSeqSubset*(numSequence-1)/2, 
+		"mismatch of numSeqSubset");
+    for (j = 1; j < numSequence; j++) {
+      for (k = 0; k < numSeqSubset/2; k++) {
+	int idx = (j-1)*numSeqSubset/2 + k; // into temp array
+	int idx_orig = j*numSeqSubset + 2*k + 1; // into original array
+	subSlot = _fc_getSubSlot(temp_seqSubsets[idx][0]);
+	fail_unless(FC_HANDLE_EQUIV(subSlot->sequence, sequences[j]),
+		    "mismatch of sequence handle");
+	fail_unless(temp_numSteps[idx] == numSteps[j],
+		    "mismatch of numStep");
+	for (m = 0; m < temp_numSteps[idx]; m++)
+	  fail_unless(FC_HANDLE_EQUIV(temp_seqSubsets[idx][m],
+				      seqSubsets[idx_orig][m]), 
+		      "mismatch of subset handles");
+	free(temp_seqSubsets[idx]);
+      }
+    }
+    free(temp_numSteps);
+    free(temp_seqSubsets);
+
+    // delete remaining subsets
+    for (j = 1; j < numSequence; j++) {
+      for (k = 1; k < numSeqSubset; k+=2) { 
+	rc = fc_deleteSeqSubset(numSteps[j], seqSubsets[j*numSeqSubset+k]);
+	fail_unless(rc == FC_SUCCESS, "failed to delete subset");
+	free(seqSubsets[j*numSeqSubset+k]);
+      }
+    }
+
+    // get seq subsets (should be none);
+    rc = fc_getSeqSubsets(mesh, &temp_numSeqSubset, &temp_numSteps, 
+			  &temp_seqSubsets);
+    fail_unless(rc == FC_SUCCESS, "failed to get seq subsets");
+    fail_unless(temp_numSeqSubset == 0 && temp_numSteps == NULL && 
+		temp_seqSubsets == NULL, 
+		"should return 0 & nulls if all seqSubsets delete");
+
+    // ---- test special cases
+    // create 1 seqSubset for further testing
+    rc = fc_createSeqSubset(mesh, sequences[0], names[0][0], FC_AT_VERTEX,
+			      &temp_numStep, &seqSubsets[0]);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to create seq subset");
+ 
+    // ---- test special cases
+
+    // rc_deleteSeqSubset() - not an error to delete (0, NULL)
+    rc = fc_deleteSeqSubset(0, NULL);
+    fail_unless(rc == FC_SUCCESS, "should not error to delete NULL seqSubset");
+    
+    // ---- test error conditions
+
+    //construct a bad seqSubset (make one of the subsets bad)
+    badSeqSubset = (FC_Subset*)malloc(numSteps[0]*sizeof(FC_Subset));
+    for (j = 0; j < numSteps[0]; j++)
+      badSeqSubset[j] = seqSubsets[0][j];
+    badSeqSubset[numSteps[0]/2] = badSubset;
+    
+    // bad args to fc_createSeqSubset()
+    rc = fc_createSeqSubset(FC_NULL_MESH, sequences[0], names[0][0], 
+			    FC_AT_VERTEX, &temp_numStep, &temp_seqSubset);
+    fail_unless(rc != FC_SUCCESS, "should fail with bad mesh");
+    fail_unless(temp_numStep == -1 && temp_seqSubset == NULL, 
+		"fail should return NULL seqSubset");
+    rc = fc_createSeqSubset(meshes[0], FC_NULL_SEQUENCE, names[0][0], 
+			    FC_AT_VERTEX, &temp_numStep, &temp_seqSubset);
+    fail_unless(rc != FC_SUCCESS, "should fail with bad sequence");
+    fail_unless(temp_numStep == -1 && temp_seqSubset == NULL, 
+		"fail should return NULL seqSubset");
+    rc = fc_createSeqSubset(meshes[0], sequences[0], NULL, FC_AT_VERTEX,
+			      &temp_numStep, &temp_seqSubset);
+    fail_unless(rc != FC_SUCCESS, "should fail with null name");
+    fail_unless(temp_numStep == -1 && temp_seqSubset == NULL, 
+		"fail should return NULL seqSubset");
+    rc = fc_createSeqSubset(meshes[0], sequences[0], names[0][0], FC_AT_VERTEX,
+			      NULL, &temp_seqSubset);
+    fail_unless(rc != FC_SUCCESS, "should fail with null numStep");
+    fail_unless(temp_seqSubset == NULL, "fail should return NULL seqSubset");
+    rc = fc_createSeqSubset(meshes[0], sequences[0], names[0][0], FC_AT_VERTEX,
+			      &temp_numStep, NULL);
+    fail_unless(rc != FC_SUCCESS, "should fail with null seqSubset");
+    fail_unless(temp_numStep == -1, "fail should return NULL");
+
+    // bad args to fc_changeSeqSubsetName()
+    rc = fc_changeSeqSubsetName(numSteps[0], seqSubsets[0], NULL);
+    fail_unless(rc != FC_SUCCESS, "should fail if new name is NULL");
+    rc = fc_getSeqSubsetByName(mesh, names[0][0], &temp_numSeqSubset,
+				 &temp_numSteps, 
+				 &temp_seqSubsets);
+    fail_unless(rc == FC_SUCCESS && temp_numSeqSubset == 1 &&
+		temp_numSteps[0] == numSteps[0],
+		"should not change name of sequence subset");
+    for (j = 0; j < numSteps[0]; j++)
+      fail_unless(FC_HANDLE_EQUIV(seqSubsets[0][j], temp_seqSubsets[0][j]),
+		  "should not change name of sequence subset");
+    free(temp_seqSubsets[0]);
+    free(temp_seqSubsets);
+    free(temp_numSteps);
+
+    // bad args to fc_getSeqSubsets()
+    temp_numSteps = (int*)1;
+    temp_seqSubsets = (FC_Subset**)1;
+    rc = fc_getSeqSubsets(FC_NULL_MESH, &temp_numSeqSubset,
+			 &temp_numSteps, &temp_seqSubsets);
+    fail_unless(rc != FC_SUCCESS, 
+		"should have failed to get subset with null mesh");
+    fail_unless(temp_numSeqSubset == -1 && temp_numSteps == NULL && 
+		temp_seqSubsets == NULL, "fail should return nulls"); 
+    temp_numSteps = (int*)1;
+    temp_seqSubsets = (FC_Subset**)1;
+    rc = fc_getSeqSubsets(mesh, NULL, &temp_numSteps, &temp_seqSubsets);
+    fail_unless(rc != FC_SUCCESS, 
+		"should have failed with NULL numSeqSubset");
+    fail_unless(temp_numSteps == NULL && temp_seqSubsets == NULL, 
+		"fail should return nulls"); 
+    temp_seqSubsets = (FC_Subset**)1;
+    rc = fc_getSeqSubsets(mesh, &temp_numSeqSubset, NULL, &temp_seqSubsets);
+    fail_unless(rc != FC_SUCCESS, 
+		"should have failed with NULL numStepPerSubset");
+    fail_unless(temp_numSeqSubset == -1 && temp_seqSubsets == NULL, 
+		"fail should return nulls"); 
+    temp_numSteps = (int*)1;
+    rc = fc_getSeqSubsets(mesh, &temp_numSeqSubset, &temp_numSteps, NULL);
+    fail_unless(rc != FC_SUCCESS, 
+		"should have failed with NULL seqSubsets");
+    fail_unless(temp_numSeqSubset == -1 && temp_numSteps == NULL, 
+		"fail should return nulls"); 
+
+    // bad args to fc_getNumSeqSubset()
+    rc = fc_getNumSeqSubset(FC_NULL_MESH, &temp_numSeqSubset);
+    fail_unless(rc != FC_SUCCESS, 
+		"should have failed to get num seq subset with null mesh");
+    fail_unless(temp_numSeqSubset == -1, "fail should return nulls"); 
+    rc = fc_getNumSeqSubset(mesh, NULL);
+    fail_unless(rc != FC_SUCCESS, 
+		"should have failed with NULL numSeqSubset");
+
+   // bad args to fc_getSeqSubsetByName()
+    rc = fc_getSeqSubsetByName(FC_NULL_MESH, names[0][0],
+				       &temp_numSeqSubset,
+				       &temp_numSteps,
+				       &temp_seqSubsets);
+    fail_unless(rc != FC_SUCCESS, "should fail with NULL MESH");
+    fail_unless(temp_numSeqSubset == -1 && temp_numSteps == NULL &&
+		temp_seqSubsets == NULL, "should return -1 and NULL when fail");
+
+    rc = fc_getSeqSubsetByName(mesh, NULL,
+			       &temp_numSeqSubset,
+			       &temp_numSteps,
+			       &temp_seqSubsets);
+    fail_unless(rc != FC_SUCCESS, "should fail with NULL name");
+    fail_unless(temp_numSeqSubset == -1 && temp_numSteps == NULL &&
+		temp_seqSubsets == NULL, "should return -1 and NULL when fail");
+
+    rc = fc_getSeqSubsetByName(mesh, names[0][0],
+			       NULL,
+			       &temp_numSteps,
+			       &temp_seqSubsets);
+    fail_unless(rc != FC_SUCCESS, "should fail with NULL arg");
+    fail_unless(temp_numSteps == NULL &&
+		temp_seqSubsets == NULL, "should return -1 and NULL when fail");
+
+    rc = fc_getSeqSubsetByName(mesh, names[0][0],
+			       &temp_numSeqSubset,
+			       NULL,
+			       &temp_seqSubsets);
+    fail_unless(rc != FC_SUCCESS, "should fail with NULL arg");
+    fail_unless(temp_numSeqSubset == -1 && temp_seqSubsets == NULL,
+		"should return -1 and NULL when fail");
+    
+    rc = fc_getSeqSubsetByName(mesh, names[0][0],
+			       &temp_numSeqSubset,
+			       &temp_numSteps,
+			       NULL);
+    fail_unless(rc != FC_SUCCESS, "should fail with NULL name");
+    fail_unless(temp_numSeqSubset == -1 && temp_numSteps == NULL,
+		"should return -1 and NULL when fail");
+
+    // bad args to fc_deleteSeqSubset()
+    rc = fc_deleteSeqSubset(numSteps[0]-1, seqSubsets[0]);
+    fail_unless(rc != FC_SUCCESS, 
+		"should error if numStep doesn't correspond to seqSubset");
+    rc = fc_deleteSeqSubset(numSteps[0], NULL);
+    fail_unless(rc != FC_SUCCESS, "should error if seqSubset = NULL");
+    rc = fc_deleteSeqSubset(numSteps[0], badSeqSubset);
+    fail_unless(rc != FC_SUCCESS, "should error if badSeqSubset");
+
+    // --- done
+
+    // delete last sequence subset
+    rc = fc_deleteSeqSubset(numSteps[0],seqSubsets[0]);
+    fail_unless(rc == FC_SUCCESS, "cant delete seq subset");
+
+    //cleanup
+    free(seqSubsets[0]);
+    free(badSeqSubset);
+  } //loop over meshes
+  free(sequences);
+  free(meshes);
+}
+END_TEST
+
+
+
+// copy
+START_TEST(seq_copy_test)
+{
+  FC_ReturnCode rc;
+  int i, m, n;
+  char name[20] = "blue berry", copy_name[20] = "banana nut", *temp_name;
+  FC_Dataset dataset, *returnDatasets;
+  FC_Sequence sequence1, sequence2, weirdSequence, badSequence = { 999, 999 };
+  FC_Sequence *returnSequences;
+  FC_Mesh mesh1, mesh2, weirdMesh, badMesh = { 999, 999 };
+  FC_Mesh *returnMeshes;
+  int numReturnDatasets, numReturnMeshes, numReturnSequences;
+  int numMember = 5, maxNumMember, currNumMember, members[5] = { 0, 1, 5, 7, 10 };
+  int temp_numMember, temp_maxNumMember, orig_numMember, orig_maxNumMember;
+  int *temp_members;
+  int numSeqSubset1, numSeqSubset2, temp_numSeqSubset, temp_numStep, numStep;
+  FC_Subset *seqSubset, *copy_seqSubset, *badSeqSubset;
+  FC_Subset badSubset = { 999, 999 };
+  int numAssoc = 4;
+  FC_AssociationType assoc[4] = { FC_AT_VERTEX, FC_AT_EDGE, FC_AT_FACE,
+				   FC_AT_ELEMENT};
+  FC_AssociationType temp_assoc;
+  int  numVertex, numElement;
+
+
+  // get dataset and mesh
+  rc = fc_getDatasetByName(dataset_name, &numReturnDatasets,
+			   &returnDatasets);
+  fail_unless(rc == FC_SUCCESS, "aborted - cant get dataset by name");
+  fail_unless(numReturnDatasets == 1,
+	      "failed to find unique dataset by name");
+  dataset = returnDatasets[0];
+  free(returnDatasets);
+  rc = fc_getSequenceByName(dataset,"time", &numReturnSequences,
+			   &returnSequences);
+  fail_unless(rc == FC_SUCCESS, "aborted - cant get sequence by name");
+  fail_unless(numReturnSequences == 1,
+	      "failed to find unique sequences by name");
+  sequence1 = returnSequences[0];
+  free(returnSequences);
+  rc = fc_getMeshByName(dataset, "hex mesh", &numReturnMeshes,
+			&returnMeshes);
+  fail_unless(rc == FC_SUCCESS, "aborted - cant get mesh by name");
+  fail_unless(numReturnMeshes == 1, "failed to find unique mesh by name");
+  mesh1 = returnMeshes[0];
+  free(returnMeshes);
+  fc_getMeshInfo(mesh1, NULL, NULL, &numVertex, &numElement, NULL);
+
+  // make a second sequence & second mesh to copy to
+  rc = fc_copySequence(sequence1, dataset, "copy sequence", &sequence2);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to copy sequence");
+  rc = fc_copyMesh(mesh1, dataset, "copy mesh", 0, 0, 0, 0, &mesh2);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to copy mesh");
+
+  // get a third sequence we shouldn't be able to copy to - different numStep
+  // (don't delete when we're done)
+  rc = fc_getSequenceByName(dataset,"time2", &numReturnSequences,
+			   &returnSequences);
+  fail_unless(rc == FC_SUCCESS, "aborted - cant get sequence by name");
+  fail_unless(numReturnSequences == 1,
+	      "failed to find unique sequences by name");
+  weirdSequence = returnSequences[0];
+  free(returnSequences);
+
+  // make a third mesh we shouldn't be able to copy to - just 1 element
+  {
+    int dim, *conns;
+    double* coords;
+    FC_ElementType elemType;
+    fc_getMeshInfo(mesh1, NULL, &dim, NULL, &numElement, &elemType);
+    fc_getMeshCoordsPtr(mesh1, &coords);
+    fc_getMeshElementConnsPtr(mesh1, &conns);
+    rc = fc_createMesh(dataset, "different mesh", &weirdMesh);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to create mesh");
+    rc = fc_setMeshCoords(weirdMesh, dim, fc_getElementTypeNumVertex(elemType),
+			  coords);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to set coords");
+    rc = fc_setMeshElementConns(weirdMesh, elemType, 1, conns);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to set conns");
+  }
+
+  numSeqSubset1 = 0;
+  numSeqSubset2 = 0;
+
+  for (m = 0; m < numAssoc; m++){
+    // setup some arbitrary data (hopefully different for every step)
+    rc = fc_createSeqSubset(mesh1, sequence1, name, assoc[m],
+			  &temp_numStep, &seqSubset);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to create seq subset"); 
+    rc = fc_getSequenceNumStep(sequence1, &numStep);
+    fail_unless(rc == FC_SUCCESS, "abort: cant get seq num step");
+    rc = fc_getSubsetInfo(seqSubset[0], NULL, &maxNumMember, NULL);
+    currNumMember = 0; 
+    for (i = 0; i < numStep; i++) {
+      currNumMember++;
+      numMember = (currNumMember > maxNumMember ? maxNumMember : currNumMember);
+      rc = fc_addArrayMembersToSubset(seqSubset[i], numMember, members);
+      fail_unless(rc == FC_SUCCESS, "abort: failed to add members to subset");
+    }
+
+    // copy to same mesh & sequence & check it
+    rc = fc_copySeqSubset(numStep, seqSubset, mesh1, sequence1, 
+			  copy_name, &copy_seqSubset);
+    fail_unless(rc == FC_SUCCESS, "failed to copy to same mesh");
+    numSeqSubset1++;
+    fail_unless(rc == FC_SUCCESS, "failed to get max num member");
+    for (n = 0; n < numStep; n++) {
+      rc = fc_getSubsetName(copy_seqSubset[n], &temp_name);
+      fail_unless(rc == FC_SUCCESS, "failed to get name of copy");
+      fail_unless(!strcmp(temp_name, copy_name), "mismatch of name");
+      free(temp_name);
+      
+      rc = fc_getSubsetInfo(copy_seqSubset[n], &temp_numMember, &temp_maxNumMember,
+			    &temp_assoc);
+      fail_unless(rc == FC_SUCCESS, "failed to get subset info");
+      rc = fc_getSubsetInfo(seqSubset[n], &orig_numMember, &orig_maxNumMember,
+			    NULL);
+      fail_unless(rc == FC_SUCCESS, "failed to get subset info");
+      fail_unless(temp_numMember == orig_numMember, 
+		  "mismatch of numMember");
+      fail_unless(temp_maxNumMember == maxNumMember, 
+		  "mismatch of maxNumMember");
+      fail_unless(temp_assoc == assoc[m], "mismatch of assoc");
+      rc = fc_getSubsetMembersAsArray(copy_seqSubset[n], &temp_numMember, 
+				      &temp_members);
+      fail_unless(rc == FC_SUCCESS, "failed to get subset info");
+      fail_unless(temp_numMember == orig_numMember,
+		  "mismatch of numMember");
+      fail_unless(!memcmp(temp_members, members,
+			  sizeof(int)*orig_numMember), "mismatch of members");
+      free(temp_members);
+    }
+    free(copy_seqSubset); // cleaning up the mesh will clean up the subsets
+
+    // copy to different mesh & different sequence & check it
+    rc = fc_copySeqSubset(numStep, seqSubset, mesh2, sequence2, 
+			  copy_name, &copy_seqSubset);
+    fail_unless(rc == FC_SUCCESS, "failed to copy to same mesh");
+    numSeqSubset2++;
+    for (n = 0; n < numStep; n++) {
+      rc = fc_getSubsetName(copy_seqSubset[n], &temp_name);
+      fail_unless(rc == FC_SUCCESS, "failed to get name of copy");
+      fail_unless(!strcmp(temp_name, copy_name), "mismatch of name");
+      free(temp_name);
+      
+      rc = fc_getSubsetInfo(copy_seqSubset[n], &temp_numMember, &temp_maxNumMember,
+			    &temp_assoc);
+      fail_unless(rc == FC_SUCCESS, "failed to get subset info");
+      rc = fc_getSubsetInfo(seqSubset[n], &orig_numMember, &orig_maxNumMember,
+			    NULL);
+      fail_unless(rc == FC_SUCCESS, "failed to get subset info");
+      fail_unless(temp_numMember == orig_numMember, 
+		  "mismatch of numMember");
+      fail_unless(temp_maxNumMember == maxNumMember, 
+		  "mismatch of maxNumMember");
+      fail_unless(temp_assoc == assoc[m], "mismatch of assoc");
+      rc = fc_getSubsetMembersAsArray(copy_seqSubset[n], &temp_numMember, 
+				      &temp_members);
+      fail_unless(rc == FC_SUCCESS, "failed to get subset info");
+      fail_unless(temp_numMember == orig_numMember,
+		  "mismatch of numMember");
+      fail_unless(!memcmp(temp_members, members,
+			  sizeof(int)*orig_numMember), "mismatch of members");
+      free(temp_members);
+    }
+    free(copy_seqSubset); // cleaning up the mesh will clean up the subsets
+
+    // fc_copySeqSubset() to very differnt mesh should fail
+    rc = fc_copySeqSubset(numStep, seqSubset, weirdMesh, sequence1, 
+			  copy_name, &copy_seqSubset);
+    fail_unless(rc != FC_SUCCESS,
+		"should fail to copy to a very different mesh");
+    fail_unless(copy_seqSubset == NULL, "should return null seqSubset");
+    
+    // fc_copySeqSubset() to a very different sequence should fail
+    rc = fc_copySeqSubset(numStep, seqSubset, mesh1, weirdSequence, 
+			  copy_name, &copy_seqSubset);
+    fail_unless(rc != FC_SUCCESS,
+		"should fail to copy to a very different sequence");
+    fail_unless(copy_seqSubset == NULL, "should return null seqSubset");
+    
+    // --- special cases
+    
+    // copy with NULL name will use original's name
+    rc = fc_copySeqSubset(numStep, seqSubset, mesh1, sequence1, 
+			  NULL, &copy_seqSubset);
+    fail_unless(rc == FC_SUCCESS, "failed to copy to same mesh");
+    for (n = 0; n < numStep; n++) {
+      rc = fc_getSubsetName(copy_seqSubset[n], &temp_name);
+      fail_unless(rc == FC_SUCCESS, "failed to get name of copy");
+      fail_unless(!strcmp(temp_name, name), "mismatch of name");
+      free(temp_name);
+    }
+    rc = fc_deleteSeqSubset(numStep, copy_seqSubset);
+    fail_unless(rc == FC_SUCCESS, "failed to delete copied seqSubset");
+    free(copy_seqSubset);
+    
+    // ---- check errors
+    
+    // construct a bad seqSubset (make one of the subs bad)
+    badSeqSubset = (FC_Subset*)malloc(numStep*sizeof(FC_Subset));
+    for (n = 0; n < numStep; n++)
+      badSeqSubset[n] = seqSubset[n];
+    badSeqSubset[numStep/2] = badSubset;
+
+    // fc_copySeqSubset() -- bad args
+    rc = fc_copySeqSubset(numStep-1, seqSubset, mesh1, sequence1, 
+			  copy_name, &copy_seqSubset);
+    fail_unless(rc != FC_SUCCESS, "should fail with wrong numStep");
+    fail_unless(copy_seqSubset == NULL, "fail should return null seqSubset");
+    rc = fc_copySeqSubset(numStep, NULL, mesh1, sequence1, 
+			  copy_name, &copy_seqSubset);
+    fail_unless(rc != FC_SUCCESS, "should fail with null seqSubset");
+    fail_unless(copy_seqSubset == NULL, "fail should return null seqSubset");
+    rc = fc_copySeqSubset(numStep, badSeqSubset, mesh1, sequence1, 
+			  copy_name, &copy_seqSubset);
+    fail_unless(rc != FC_SUCCESS, "should fail with badSeqSubset");
+    fail_unless(copy_seqSubset == NULL, "fail should return null seqSubset");
+    rc = fc_copySeqSubset(numStep, seqSubset, badMesh, sequence1, 
+			  copy_name, &copy_seqSubset);
+    fail_unless(rc != FC_SUCCESS, "should fail with badmesh");
+    fail_unless(copy_seqSubset == NULL, "fail should return null seqSubset");
+    rc = fc_copySeqSubset(numStep, seqSubset, mesh1, badSequence, 
+			  copy_name, &copy_seqSubset);
+    fail_unless(rc != FC_SUCCESS, "should fail with bad sequence");
+    fail_unless(copy_seqSubset == NULL, "fail should return null seqSubset");
+    rc = fc_copySeqSubset(numStep, seqSubset, mesh1, sequence1, 
+			  copy_name, NULL);
+    fail_unless(rc != FC_SUCCESS, "should fail with null sequence subset");
+    fail_unless(copy_seqSubset == NULL, "fail should return null seqSubset");
+
+    // --- done
+    
+    // cleanup
+    free(badSeqSubset);
+    fc_deleteSeqSubset(numStep, seqSubset);
+    free(seqSubset);
+  }
+
+  // a little more checking & cleanup
+  rc = fc_deleteMesh(weirdMesh);
+  fail_unless(rc == FC_SUCCESS, "failed to delete weird mesh");  
+  rc = fc_getNumSeqSubset(mesh2, &temp_numSeqSubset);
+  fail_unless(rc == FC_SUCCESS, "shouldn't fail to get numSeqSubsets");
+  fail_unless(temp_numSeqSubset == numSeqSubset2, "mismatch of numSeqSubset");
+  rc = fc_deleteMesh(mesh2);
+  fail_unless(rc == FC_SUCCESS, "failed to delete second mesh");
+  rc = fc_getNumSeqSubset(mesh1, &temp_numSeqSubset);
+  fail_unless(rc == FC_SUCCESS, "shouldn't fail to get numSeqSubset");
+  fail_unless(temp_numSeqSubset == numSeqSubset1, "mismatch of numSeqSubset");
+}
+END_TEST
+
+
 // complement
 START_TEST(subset_complement)
 {
@@ -2417,6 +3225,507 @@ START_TEST(subset_intersection)
 END_TEST
 
 
+// --- creating new subset from other subset
+
+// convert from basic subset to seq subset test
+// test representative case
+START_TEST(subset_to_seq_subset)
+{
+  FC_ReturnCode rc;
+  int i, j, k;
+  char subName[20] = "peanut", seqSubName[20] = "butter", *temp_name;
+  char copyName[20] = "fudge"; // o.k., I may be hungry
+  FC_Dataset dataset, *returnDatasets;
+  int numReturnDatasets;
+  FC_Sequence *sequences, temp_sequence, badSequence = { 999, 999 };
+  FC_Mesh *meshes, mesh;
+  FC_Subset subs[2][10]; // index by seq then step
+  FC_Subset copySubs[10], badSubs[10], badSub = { 999, 999 };
+  int numMember = 5, tempNumMember, currNumMember, members[5] = { 0, 1, 5, 7, 10 };
+  int *temp_members;
+  int numMesh, numSequence, numSteps[3];
+  int temp_numSub, *temp_numSteps, temp_numSeqSub;
+  FC_Subset *new_seqSubs[3], **temp_seqSubs, *temp_seqSub;
+  _FC_MeshSlot *meshSlot;
+  _FC_SubSlot* subSlot;
+
+  // get dataset, sequences and meshes
+  rc = fc_getDatasetByName(dataset_name, &numReturnDatasets,
+			   &returnDatasets);
+  fail_unless(rc == FC_SUCCESS, "aborted - cant get dataset by name");
+  fail_unless(numReturnDatasets == 1,
+	      "failed to find unique dataset by name");
+  dataset = returnDatasets[0];
+  free(returnDatasets);
+  rc = fc_getSequences(dataset, &numSequence, &sequences);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get sequences");
+  fail_unless(numSequence == 2, "abort: expected 2 sequences");
+  rc = fc_getMeshes(dataset, &numMesh, &meshes);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get meshes");
+  fail_unless(numMesh == 8, "abort: expected 8 meshes"); 
+  for (i = 0; i < numSequence; i++)
+    fc_getSequenceNumStep(sequences[i], &numSteps[i]);
+  fail_unless(numSteps[0] != numSteps[1], 
+	      "abort: expect sequences to have different number of steps");
+  mesh = meshes[7];
+  meshSlot = _fc_getMeshSlot(mesh);
+
+  // create subsets
+  for (i = 0; i < numSequence; i++) {
+    currNumMember = 0; 
+    for (j = 0; j < numSteps[i]; j++) {
+      rc = fc_createSubset(mesh, subName, FC_AT_VERTEX, &subs[i][j]);
+      fail_unless(rc == FC_SUCCESS, "failed to create subset");
+      currNumMember++;
+      tempNumMember = (currNumMember > numMember ? numMember : currNumMember);
+      rc = fc_addArrayMembersToSubset(subs[i][j], tempNumMember, members);
+      fail_unless(rc == FC_SUCCESS, "abort: failed to add members to subset");
+    }
+  }
+
+  // ---- First converted seq subset - give new name
+  rc = fc_convertSubsetsToSeqSubset(numSteps[0], subs[0], sequences[0], 
+					 seqSubName, &new_seqSubs[0]);
+  fail_unless(rc == FC_SUCCESS, "failed to convert to seq sub");
+  fail_unless(fc_isSeqSubsetValid(numSteps[0], new_seqSubs[0]),
+	      "seq sub failed valid test");
+  currNumMember = 0;
+  for (i = 0; i < numSteps[0]; i++) {
+    fail_unless(FC_HANDLE_EQUIV(new_seqSubs[0][i], subs[0][i]),
+		"mismatch of handle");
+    fc_getSubsetName(new_seqSubs[0][i], &temp_name);
+    fail_unless(!strcmp(temp_name, seqSubName), "mismatch of name");
+    free(temp_name);
+    rc = fc_getSubsetMembersAsArray(new_seqSubs[0][i], &tempNumMember, &temp_members);
+    fail_unless(rc == FC_SUCCESS, "failed to get members as array");
+    currNumMember++;
+    j = (currNumMember > numMember ? numMember : currNumMember);
+    fail_unless(tempNumMember == j, "mismatch of numMember");
+    fail_unless(!memcmp(temp_members, members, sizeof(int)*j), 
+		"msimatch of members");
+    free(temp_members);
+    subSlot = _fc_getSubSlot(new_seqSubs[0][i]);
+    fail_unless(FC_HANDLE_EQUIV(subSlot->sequence, sequences[0]) && 
+		subSlot->stepID == i, "new seq sub does not have correct sequence info");
+  }
+  // test state of mesh
+  rc = fc_getNumSubset(mesh, &temp_numSub);
+  fail_unless(rc == FC_SUCCESS, "failed to get number of subsets");
+  fail_unless(temp_numSub == numSteps[1], "should have subset for 2nd seq");
+  for (i = 0; i < numSteps[1]; i++)
+    fail_unless(meshSlot->subIDs[i] == subs[1][i].slotID,
+		"bad subIDs on meshSlot");
+  rc = fc_getSeqSubsets(mesh, &temp_numSeqSub, &temp_numSteps, 
+			  &temp_seqSubs);
+  fail_unless(rc == FC_SUCCESS, "failed to get seq subs");
+  fail_unless(temp_numSeqSub == 1, "should be one seq sub");
+  fail_unless(temp_numSteps[0] == numSteps[0], "mismatch of step");
+  for (i = 0; i < numSteps[0]; i++) 
+    fail_unless(FC_HANDLE_EQUIV(temp_seqSubs[0][i], new_seqSubs[0][i]),
+		"mismatch of handle");
+  free(temp_numSteps);
+  for (i = 0; i < temp_numSeqSub; i++)
+    free(temp_seqSubs[i]);
+  free(temp_seqSubs);
+
+
+  // ---- Second converted seq subset - use old name
+  rc = fc_convertSubsetsToSeqSubset(numSteps[1], subs[1], sequences[1], 
+					 NULL, &new_seqSubs[1]);
+  fail_unless(rc == FC_SUCCESS, "failed to convert to seq sub");
+  fail_unless(fc_isSeqSubsetValid(numSteps[1], new_seqSubs[1]),
+	      "seq sub failed valid test");
+  currNumMember = 0;
+  for (i = 0; i < numSteps[1]; i++) {
+    fail_unless(FC_HANDLE_EQUIV(new_seqSubs[1][i], subs[1][i]),
+		"mismatch of handle");
+    fc_getSubsetName(new_seqSubs[1][i], &temp_name);
+    fail_unless(!strcmp(temp_name, subName), "mismatch of name");
+    free(temp_name);
+    rc = fc_getSubsetMembersAsArray(new_seqSubs[1][i], &tempNumMember, &temp_members);
+    fail_unless(rc == FC_SUCCESS, "failed to get members as array");
+    currNumMember++;
+    j = (currNumMember > numMember ? numMember : currNumMember);
+    fail_unless(tempNumMember == j, "mismatch of numMember");
+    fail_unless(!memcmp(temp_members, members, sizeof(int)*j), 
+		"msimatch of members");
+    free(temp_members);
+  }
+  // test state of mesh
+  rc = fc_getNumSubset(mesh, &temp_numSub);
+  fail_unless(rc == FC_SUCCESS, "failed to get number of subsets");
+  fail_unless(temp_numSub == 0, "should not have any subsets left");
+  fail_unless(meshSlot->subIDs == NULL,	"bad subIDs on meshSlot");
+  rc = fc_getSeqSubsets(mesh, &temp_numSeqSub, &temp_numSteps, 
+			  &temp_seqSubs);
+  fail_unless(rc == FC_SUCCESS, "failed to get seq subs");
+  fail_unless(temp_numSeqSub == 2, "should be two seq sub");
+  fail_unless(temp_numSteps[0] == numSteps[0], "mismatch of step");
+  for (i = 0; i < temp_numSeqSub; i++) {
+    fail_unless(temp_numSteps[i] == numSteps[i], "mismatch of step");
+    fc_getSequenceFromSeqSubset(temp_numSteps[i], temp_seqSubs[i],
+				  &temp_sequence);
+    fail_unless(FC_HANDLE_EQUIV(temp_sequence, sequences[i]),
+		"mismatch of sequence");
+    for (j = 0; j < temp_numSteps[i]; j++)
+      fail_unless(FC_HANDLE_EQUIV(temp_seqSubs[i][j], new_seqSubs[i][j]),
+		  "mismatch of handle");
+  }
+  free(temp_numSteps);
+  for (i = 0; i < temp_numSeqSub; i++)
+    free(temp_seqSubs[i]);
+  free(temp_seqSubs);
+
+  // ---- Third converted seq sub - put one more on first sequence
+  // also test copying of steps of sequence sub -> should get basic sub
+  for (i = 0; i < numSteps[1]; i++) {
+    rc = fc_copySubset(new_seqSubs[1][i], mesh, copyName, &copySubs[i]);
+    fail_unless(rc == FC_SUCCESS, "failed to copy subset");
+    subSlot = _fc_getSubSlot(copySubs[i]);
+    fail_unless(FC_HANDLE_EQUIV(subSlot->sequence, FC_NULL_SEQUENCE) && 
+		subSlot->stepID == -1, "copy of step should not be seqSub");
+  }
+  numSteps[2] = numSteps[1];
+  rc = fc_convertSubsetsToSeqSubset(numSteps[1], copySubs, sequences[1], 
+					 NULL, &new_seqSubs[2]);
+  fail_unless(rc == FC_SUCCESS, "failed to convert to seq sub");
+  fail_unless(fc_isSeqSubsetValid(numSteps[2], new_seqSubs[2]),
+	      "seq sub failed valid test");
+  currNumMember = 0;
+  for (i = 0; i < numSteps[2]; i++) {
+    fail_unless(FC_HANDLE_EQUIV(new_seqSubs[2][i], copySubs[i]),
+		"mismatch of handle");
+    fc_getSubsetName(new_seqSubs[2][i], &temp_name);
+    fail_unless(!strcmp(temp_name, copyName), "mismatch of name");
+    free(temp_name);
+    rc = fc_getSubsetMembersAsArray(new_seqSubs[2][i], &tempNumMember, &temp_members);
+    fail_unless(rc == FC_SUCCESS, "failed to get members as array");
+    currNumMember++;
+    j = (currNumMember > numMember ? numMember : currNumMember);
+    fail_unless(tempNumMember == j, "mismatch of numMember");
+    fail_unless(!memcmp(temp_members, members, sizeof(int)*j), 
+		"msimatch of members");
+    free(temp_members);
+  }
+  // test state of mesh
+  rc = fc_getNumSubset(mesh, &temp_numSub);
+  fail_unless(rc == FC_SUCCESS, "failed to get number of subsets");
+  fail_unless(temp_numSub == 0, "should not have any subsets left");
+  fail_unless(meshSlot->subIDs == NULL,	"bad subIDs on meshSlot");
+  rc = fc_getSeqSubsets(mesh, &temp_numSeqSub, &temp_numSteps, 
+			  &temp_seqSubs);
+  fail_unless(rc == FC_SUCCESS, "failed to get seq subs");
+  fail_unless(temp_numSeqSub == 3, "should be three seq sub");
+  for (i = 0; i < 3; i++) {
+    if (i < 2)
+      k = i;
+    else 
+      k = 1;
+    fail_unless(temp_numSteps[i] == numSteps[k], "mismatch of step");
+    fc_getSequenceFromSeqSubset(temp_numSteps[i], temp_seqSubs[i],
+				  &temp_sequence);
+    fail_unless(FC_HANDLE_EQUIV(temp_sequence, sequences[k]),
+		"mismatch of sequence");
+    for (j = 0; j < temp_numSteps[i]; j++)
+	fail_unless(FC_HANDLE_EQUIV(temp_seqSubs[i][j], new_seqSubs[i][j]),
+		    "mismatch of handle");
+  }
+  free(temp_numSteps);
+  for (i = 0; i < temp_numSeqSub; i++)
+    free(temp_seqSubs[i]);
+  free(temp_seqSubs);
+
+  // --- test errors
+
+  // make a set of basic subs for testing purposes
+  for (i = 0; i < numSteps[1]; i++) {
+    rc = fc_copySubset(new_seqSubs[1][i], mesh, copyName, &copySubs[i]);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to copy sub");
+    subSlot = _fc_getSubSlot(copySubs[i]);
+    fail_unless(FC_HANDLE_EQUIV(subSlot->sequence, FC_NULL_SEQUENCE) && 
+		subSlot->stepID == -1, "copy of step should not be seqSub");
+    badSubs[i] = copySubs[i];
+  }
+  // bad subs has one sub on another mesh
+  rc = fc_copySubset(new_seqSubs[1][5], meshes[1], copyName, &badSubs[5]);
+  fail_unless(rc != FC_SUCCESS, "should failed to copy to bad subs");
+
+  // bad input -- bad subs
+  rc = fc_convertSubsetsToSeqSubset(numSteps[0], copySubs, sequences[1], 
+					seqSubName, &temp_seqSub);
+  fail_unless(rc != FC_SUCCESS, "should fail if numStep & seq do not agree");
+  fail_unless(temp_seqSub == NULL, "fail should return nulls");
+  rc = fc_convertSubsetsToSeqSubset(numSteps[1], badSubs, sequences[1], 
+					 seqSubName, &temp_seqSub);
+  fail_unless(rc != FC_SUCCESS, "should fail if subs not all on same mesh");
+  fail_unless(temp_seqSub == NULL, "fail should return nulls");
+  badSubs[5] = badSub;
+  rc = fc_convertSubsetsToSeqSubset(numSteps[1], badSubs, sequences[1], 
+					 seqSubName, &temp_seqSub);
+  fail_unless(rc != FC_SUCCESS, "should fail if one bad sub in list");
+  fail_unless(temp_seqSub == NULL, "fail should return nulls");
+
+  // bad input -- bad sequence
+  rc = fc_convertSubsetsToSeqSubset(numSteps[1], copySubs, badSequence, 
+					seqSubName, &temp_seqSub);
+  fail_unless(rc != FC_SUCCESS, "should fail if bad sequence");
+  fail_unless(temp_seqSub == NULL, "fail should return nulls");
+
+  // bad input -- missing return subsets
+  rc = fc_convertSubsetsToSeqSubset(numSteps[1], copySubs, sequences[1], 
+					 seqSubName, NULL);
+  fail_unless(rc != FC_SUCCESS, "should fail if no seqSub");
+
+  free(meshes);
+  free(sequences);
+  for (i = 0; i < 3; i++){
+    free(new_seqSubs[i]);
+  }
+}
+END_TEST
+
+
+// convert from seq subset to basic subset test
+// test representative case
+START_TEST(seq_subset_to_subset)
+{
+  FC_ReturnCode rc;
+  _FC_MeshSlot *meshSlot;
+  _FC_SubSlot* subSlot;
+  char subName[20] = "peanut", seqSubName[20] = "butter", *temp_name;
+  char copyName[20] = "fudge"; // o.k., I may be hungry
+  FC_Dataset dataset, *returnDatasets;
+  int numReturnDatasets;
+  FC_Sequence *sequences;
+  FC_Mesh *meshes, mesh;
+  FC_Subset subs[2][10]; // index by seq then step
+  char *comp_name, *comp_name_base;
+  int numMember = 5, tempNumMember, compNumMember, currNumMember,
+    members[5] = { 0, 1, 5, 7, 10 };
+  int numMesh, numSequence, numSteps[3];
+  int temp_numSub, *temp_numSteps, temp_numSeqSub;
+  int *temp_members, *comp_members;
+  FC_Subset *new_seqSubs[3], **temp_seqSubs, *new_subs;
+  int count;
+  int i, j;
+
+  // get dataset, sequences and meshes
+  rc = fc_getDatasetByName(dataset_name, &numReturnDatasets,
+			   &returnDatasets);
+  fail_unless(rc == FC_SUCCESS, "aborted - cant get dataset by name");
+  fail_unless(numReturnDatasets == 1,
+	      "failed to find unique dataset by name");
+  dataset = returnDatasets[0];
+  free(returnDatasets);
+  rc = fc_getSequences(dataset, &numSequence, &sequences);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get sequences");
+  fail_unless(numSequence == 2, "abort: expected 2 sequences");
+  rc = fc_getMeshes(dataset, &numMesh, &meshes);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get meshes");
+  fail_unless(numMesh == 8, "abort: expected 8 meshes"); 
+  for (i = 0; i < numSequence; i++)
+    fc_getSequenceNumStep(sequences[i], &numSteps[i]);
+  fail_unless(numSteps[0] != numSteps[1], 
+	      "abort: expect sequences to have different number of steps");
+  mesh = meshes[7];
+  meshSlot = _fc_getMeshSlot(mesh);
+
+  // create subsets
+  count = 0;
+  for (i = 0; i < numSequence; i++) {
+    currNumMember = 0; 
+    for (j = 0; j < numSteps[i]; j++) {
+      rc = fc_createSubset(mesh, subName, FC_AT_VERTEX, &subs[i][j]);
+      fail_unless(rc == FC_SUCCESS, "failed to create subset");
+      count++;
+      currNumMember++;
+      tempNumMember = (currNumMember > numMember ? numMember : currNumMember);
+      rc = fc_addArrayMembersToSubset(subs[i][j], tempNumMember, members);
+      fail_unless(rc == FC_SUCCESS, "abort: failed to add members to subset");
+    }
+  }
+
+  // ---- First converted seq subset - give new name
+  // we are converting the first (0th) one - order matters in checks
+  rc = fc_convertSubsetsToSeqSubset(numSteps[0], subs[0], sequences[0], 
+					 seqSubName, &new_seqSubs[0]);
+  fail_unless(rc == FC_SUCCESS, "failed to convert to seq sub");
+  fc_getSubsetName(new_seqSubs[0][0], &comp_name_base);
+  free(comp_name_base);
+  // test state of mesh
+  rc = fc_getNumSubset(mesh, &temp_numSub);
+  fail_unless(rc == FC_SUCCESS, "failed to get number of subsets");
+  fail_unless(temp_numSub == numSteps[1], "should have subsets for 2nd seq");
+  for (i = 0; i < numSteps[1]; i++){
+    //we have removed zero and bumped 1 down
+    fail_unless(meshSlot->subIDs[i] == subs[1][i].slotID,
+		"bad subIDs on meshSlot");
+  }
+  rc = fc_getSeqSubsets(mesh, &temp_numSeqSub, &temp_numSteps, 
+			&temp_seqSubs);
+  fail_unless(rc == FC_SUCCESS, "failed to get seq subs");
+  fail_unless(temp_numSeqSub == 1, "should be one seq sub");
+  fail_unless(temp_numSteps[0] == numSteps[0], "mismatch of step");
+  for (i = 0; i < numSteps[0]; i++) 
+    fail_unless(FC_HANDLE_EQUIV(temp_seqSubs[0][i], new_seqSubs[0][i]),
+		"mismatch of handle");
+  free(temp_numSteps);
+  for (i = 0; i < temp_numSeqSub; i++)
+    free(temp_seqSubs[i]);
+  free(temp_seqSubs);
+
+  //now convert back, keeping name
+  fc_getSubsetName(new_seqSubs[0][0], &comp_name_base);
+  rc = fc_convertSeqSubsetToSubsets(numSteps[0], new_seqSubs[0], 
+					 NULL, &new_subs);
+  fail_unless(rc == FC_SUCCESS, "failed to convert seq sub to subs");
+  free(new_seqSubs[0]);
+  for (i = 0; i < numSteps[0]; i++) {
+    fail_unless(FC_HANDLE_EQUIV(new_subs[i], subs[0][i]),
+		"mismatch of handle");
+    fc_getSubsetName(new_subs[i], &temp_name);
+    comp_name = malloc((strlen(comp_name_base)+40)*sizeof(char));
+    snprintf(comp_name, strlen(comp_name_base)+40,
+	     "%s_%d", comp_name_base, i);
+    fail_unless(!strcmp(temp_name, comp_name), "mismatch of name");
+    free(comp_name);
+    free(temp_name);
+    rc = fc_getSubsetMembersAsArray(new_subs[i], &tempNumMember, &temp_members);
+    fail_unless(rc == FC_SUCCESS, "failed to get members as array");
+    rc = fc_getSubsetMembersAsArray(subs[0][i], &compNumMember, &comp_members);
+    fail_unless(rc == FC_SUCCESS, "failed to get members as array");
+    fail_unless(tempNumMember == compNumMember, "mismatch of numMember");
+    fail_unless(!memcmp(temp_members, comp_members, sizeof(int)*compNumMember), 
+		"msimatch of members");
+    free(temp_members);
+    free(comp_members);
+    subSlot = _fc_getSubSlot(new_subs[i]);
+    fail_unless(FC_HANDLE_EQUIV(subSlot->sequence, FC_NULL_SEQUENCE) && 
+		subSlot->stepID == -1, "new basic sub has sequence info");
+  }
+  free(comp_name_base);
+
+  // test state of mesh
+  rc = fc_getNumSubset(mesh, &temp_numSub);
+  fail_unless(rc == FC_SUCCESS, "failed to get number of subsets");
+  j = 0;
+  for (i = 0; i < numSequence; i++){
+    j+= numSteps[i];
+  }
+  fail_unless(temp_numSub == j, "should have subsets for all seq");
+  rc = fc_getNumSeqSubset(mesh, &temp_numSeqSub);
+  fail_unless(rc == FC_SUCCESS, "failed to get number of subsets");
+  fail_unless(temp_numSeqSub == 0, "should have no seq subsets");
+  rc = fc_getSeqSubsets(mesh, &temp_numSeqSub, &temp_numSteps, 
+			  &temp_seqSubs);
+  fail_unless(rc == FC_SUCCESS, "failed to get seq subs");
+  fail_unless(temp_numSeqSub == 0, "should be no seq sub");
+  count = 0;
+  for (i = 1; i < numSequence; i++){
+    for (j = 0; j < numSteps[i]; j++){
+      fail_unless(meshSlot->subIDs[count] == subs[i][j].slotID,
+		  "bad subIDs on meshSlot");     
+      count++;
+    }
+  }
+  //slots from sequence 0 are at end
+  for (j = 0; j < numSteps[0]; j++){
+    fail_unless(meshSlot->subIDs[count+j] == subs[0][j].slotID,
+		"bad subIDs on meshSlot");      
+  }
+  free(new_subs);
+
+  //convert two and convert one back, to check slot conversions for
+  //seq subsets
+
+  // ---- Second converted seq subset and convert back
+  rc = fc_convertSubsetsToSeqSubset(numSteps[1], subs[1], sequences[1], 
+					 NULL, &new_seqSubs[1]);
+  fail_unless(rc == FC_SUCCESS, "failed to convert to seq sub");
+  fail_unless(fc_isSeqSubsetValid(numSteps[1], new_seqSubs[1]),
+	      "seq sub failed valid test");
+
+  //convert the first one again
+  rc = fc_convertSubsetsToSeqSubset(numSteps[0], subs[0], sequences[0], 
+					 seqSubName, &new_seqSubs[0]);
+  fail_unless(rc == FC_SUCCESS, "failed to convert to seq sub");
+
+  //now convert other one back, changing name
+  rc = fc_convertSeqSubsetToSubsets(numSteps[1], new_seqSubs[1], 
+					 copyName, &new_subs);
+  fail_unless(rc == FC_SUCCESS, "failed to convert seq sub to subs");
+  free(new_seqSubs[1]);
+  for (i = 0; i < numSteps[1]; i++) {
+    fail_unless(FC_HANDLE_EQUIV(new_subs[i], subs[1][i]),
+		"mismatch of handle");
+    fc_getSubsetName(new_subs[i], &temp_name);
+    comp_name = malloc((strlen(copyName)+40)*sizeof(char));
+    snprintf(comp_name, strlen(copyName)+40,
+	     "%s_%d", copyName, i);
+    fail_unless(!strcmp(temp_name, comp_name), "mismatch of name");
+    free(comp_name);
+    free(temp_name);
+    rc = fc_getSubsetMembersAsArray(new_subs[i], &tempNumMember, &temp_members);
+    fail_unless(rc == FC_SUCCESS, "failed to get members as array");
+    rc = fc_getSubsetMembersAsArray(subs[1][i], &compNumMember, &comp_members);
+    fail_unless(rc == FC_SUCCESS, "failed to get members as array");
+    fail_unless(tempNumMember == compNumMember, "mismatch of numMember");
+    fail_unless(!memcmp(temp_members, comp_members, sizeof(int)*compNumMember), 
+		"msimatch of members");
+    free(temp_members);
+    free(comp_members);
+    subSlot = _fc_getSubSlot(new_subs[i]);
+    fail_unless(FC_HANDLE_EQUIV(subSlot->sequence, FC_NULL_SEQUENCE) && 
+		subSlot->stepID == -1, "new basic sub has sequence info");
+  }
+
+  // test state of mesh
+  rc = fc_getNumSubset(mesh, &temp_numSub);
+  fail_unless(rc == FC_SUCCESS, "failed to get number of subsets");
+  j = 0;
+  for (i = 1; i < numSequence; i++){
+    j+= numSteps[i];
+  }
+  fail_unless(temp_numSub == j, "should have subsets for two seq");
+  rc = fc_getNumSeqSubset(mesh, &temp_numSeqSub);
+  fail_unless(rc == FC_SUCCESS, "failed to get number of seq subsets");
+  fail_unless(temp_numSeqSub == 1, "should have one seq subsets");
+  rc = fc_getSeqSubsets(mesh, &temp_numSeqSub, &temp_numSteps, 
+			  &temp_seqSubs);
+  fail_unless(rc == FC_SUCCESS, "failed to get seq subs");
+  fail_unless(temp_numSeqSub == 1, "should be one seq sub");
+  //know have two sequences
+  for (i = 0; i < numSteps[0]; i++){
+    fail_unless(meshSlot->seqSubIDs[0][i] == subs[0][i].slotID,
+		  "bad subIDs on meshSlot");     
+  }
+  for (i = 0; i < numSteps[1]; i++){
+    fail_unless(meshSlot->subIDs[i] == subs[1][i].slotID,
+		"bad subIDs on meshSlot");     
+  }
+  free(temp_numSteps);
+  free(temp_seqSubs[0]);
+  free(temp_seqSubs);
+  free(new_subs);
+
+  // --- test errors
+  // bad input -- mismach seqSub
+  rc = fc_convertSeqSubsetToSubsets(numSteps[1], new_seqSubs[0], seqSubName, &new_subs);
+  fail_unless(rc != FC_SUCCESS, "should fail if numStep & seq do not agree");
+  fail_unless(new_subs == NULL, "fail should return nulls");
+
+  // bad input -- missing return subsets
+  rc = fc_convertSeqSubsetToSubsets(numSteps[0], new_seqSubs[0], seqSubName, NULL);
+  fail_unless(rc != FC_SUCCESS, "should fail if no return sub array");
+
+  free(new_seqSubs[0]); 
+  free(sequences);
+  free(meshes);
+
+}
+END_TEST
+
+
 // *********************************************
 // ***** Populate the Suite with the tests
 // *********************************************
@@ -2426,12 +3735,15 @@ Suite *subset_suite(void)
 
   TCase *tc_private_sub = tcase_create(" - Private Subset ");
   TCase *tc_subset = tcase_create(" - Subset Interface ");
-  TCase *tc_subsetOps = tcase_create(" - Subset Operations ");
+  TCase *tc_seq_subset = tcase_create(" - SeqSubset Interface ");
+  TCase *tc_subsetOps = tcase_create(" - Subset Operations ");  
+  TCase *tc_convert = tcase_create(" - Convert Operations ");
 
   // private subset
   suite_add_tcase(suite, tc_private_sub);
   tcase_add_checked_fixture(tc_private_sub, subset_setup, subset_teardown);
   tcase_add_test(tc_private_sub, slot_new_delete);
+  tcase_add_test(tc_private_sub, slot_new_delete_seq);
 
   // subset interface
   suite_add_tcase(suite, tc_subset);
@@ -2448,11 +3760,23 @@ Suite *subset_suite(void)
   tcase_add_test(tc_subset, release_subset);
   tcase_add_test(tc_subset, print);
 
+  //seq subset interface
+  suite_add_tcase(suite, tc_seq_subset);
+  tcase_add_checked_fixture(tc_seq_subset, subset_setup, subset_teardown);
+  tcase_add_test(tc_seq_subset, seq_create_get_delete);
+  tcase_add_test(tc_seq_subset, seq_copy_test);
+
   // subset operations
   suite_add_tcase(suite, tc_subsetOps);
   tcase_add_checked_fixture(tc_subsetOps, subset_setup, subset_teardown);
   tcase_add_test(tc_subsetOps, subset_complement);
   tcase_add_test(tc_subsetOps, subset_intersection);
+
+  // test creating new subsets from other subsets
+  suite_add_tcase(suite, tc_convert);
+  tcase_add_checked_fixture(tc_convert, subset_setup, subset_teardown);
+  tcase_add_test(tc_convert, subset_to_seq_subset);
+  tcase_add_test(tc_convert, seq_subset_to_subset);
 
   return suite;
 }

@@ -44,9 +44,11 @@
  */
 
 // C library includes
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 // fc library dependencies
 #include "base.h"
@@ -1008,6 +1010,1073 @@ FC_ReturnCode fc_copyVariable(
   return rc;
 }
 
+
+/**
+ * \ingroup  Variable
+ * \brief  Copy a variable defined on a smaller mesh onto a bigger one
+ *
+ * \description
+ *  
+ *    Copy a variable defined on a smaller mesh onto a bigger one.
+ *    Meshes can be on different datasets.
+ *    This is intended for cases where you may promote a subset to
+ *    a mesh (becuase, for instance, it corresponds to a ROI) 
+ *    and later want to map that area back onto the original mesh.
+ *
+ *    newName is the name of the var on the dest mesh.
+ *    If the variable does not exist on the dest mesh, a new
+ *    var is created there and values for the entities on the
+ *    dest mesh that do not exist on the original mesh are
+ *    filled in with the fillval. If the variable does exist on
+ *    the dest mesh, then the vals from the srv_var are copied over
+ *    according to the mapping. This latter action allows one to
+ *    call this function in a loop, adding in the same var
+ *    from several regions sequentially. (Note this is unlike
+ *    copyVarToRegionMesh where the dest var cannot preexist.)
+ *
+ *    The entity mapping takes the form of another variable of the
+ *    same association that contains the ID numbers of the corresponding
+ *    entity type in the larger mesh. It is assumed that this is created
+ *    at the time of promoting the subset to the mesh. Note that this
+ *    is different that the lookup table ids since these go from
+ *    currmesh to prev mesh, as opposed to the original on disk 
+ *    numbering to the new fclib numbering.
+ *
+ *    Note this doest not check the coords or the conns to see if they
+ *    are the same on the 2 meshes, it only goes by the mapping numbers.
+ *
+ *    Note that since we can only write out variables as atrributes in 
+ *    exodus and therefore as doubles, the mapping var may not be explictly
+ *    FC_DT_INT. We may want to explictly convert this on read in. For now
+ *    we will just cast/round the val to an int if it is a float or double.
+ *
+ *    Note: if there is an invalid mapping data pt, it just wont copy that
+ *    one over. should change this so the call fails. 
+ *
+ * \todo
+ *   - fix the rounding. couldnt get round or rint to work.
+ *   - prob should put the conversion for the region variable
+ *     when it is read in from exodus.
+ *   - have it fail if there is an invalid mapping data pt
+ *
+ * \modifications 
+ *   - 04/24/08 ACG Created
+ */
+FC_ReturnCode fc_copyVariableFromRegionMesh(
+  FC_Variable src_var, /**< Input - the source variable to be copied */
+  FC_Mesh dest_mesh,   /**< Input - the destination mesh to be copied into */
+  FC_Variable mapping, /**< Input - int var that maps entities from this mesh to the dest mesh */
+  void* fillval,       /**< Input - optional variable fill value for entities not in the map */
+  char *newName,       /**< Input - the name of the new variable, a NULL value
+                            is a flag to use the name of the source variable */
+  FC_Variable* new_var /**< Output - handle to the new variable */
+) { 
+  FC_ReturnCode rc;
+  _FC_VarSlot* varSlot;
+  FC_Variable* existVars;
+  int numExist;
+  int numDataPoint,currnumDataPoint, numComponent, currnumComponent,numEntity;
+  int mappingnumdp,mappingnumc;
+  FC_AssociationType assoc, currassoc, mappingassoc;
+  FC_MathType mathtype, currmathtype, mappingmathtype;
+  FC_DataType datatype, currdatatype, mappingdatatype;
+  void *data, *new_data, *currdata, *mappingdata;
+  int i, j;
+
+  
+  // default return value
+  if (new_var)
+    *new_var = FC_NULL_VARIABLE;
+
+  // check input - NULL name is o.k.
+  varSlot = _fc_getVarSlot(src_var);
+  if (varSlot == NULL || !fc_isVariableValid(mapping) || !fc_isMeshValid(dest_mesh)
+      || new_var == NULL){
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  // test for NULL name
+  if (newName == NULL)
+    newName = varSlot->header.name;
+
+  // log message
+  fc_printfLogMessage("Copying region variable '%s' to '%s'", 
+                      varSlot->header.name, newName);
+
+  //more checking
+  rc = fc_getVariableInfo(mapping, &mappingnumdp, &mappingnumc,
+			  &mappingassoc,&mappingmathtype,&mappingdatatype);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get info for mapping variable");
+    return rc;
+  }
+  rc = fc_getVariableInfo(src_var, &numDataPoint, &numComponent,
+			  &assoc,&mathtype,&datatype);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get info for src variable");
+    return rc;
+  }
+
+  //NOTE: from writeout - this may be a double
+  //  if (mappingdatatype != FC_DT_INT){
+  //    fc_printfErrorMessage("mapping variable must be FC_DT_INT");
+  //    return FC_INPUT_ERROR;
+  //  }
+  if (mappingdatatype != FC_DT_INT && mappingdatatype != FC_DT_DOUBLE &&
+      mappingdatatype != FC_DT_FLOAT){
+    fc_printfErrorMessage("mappingdatatype must be numeric");
+    return FC_INPUT_ERROR;
+  }
+  if (mappingnumc != 1){
+    fc_printfErrorMessage("mapping variable must be single component");
+    return FC_INPUT_ERROR;
+  }
+  if (mappingassoc != assoc){
+    fc_printfErrorMessage("mapping variable and src variable must have same assoc");
+    return FC_INPUT_ERROR;
+  }
+  if (datatype != FC_DT_INT && datatype != FC_DT_DOUBLE && datatype != FC_DT_FLOAT &&
+      datatype != FC_DT_CHAR){
+    fc_printfErrorMessage("src variable must have known type");
+    return FC_INPUT_ERROR;
+  }
+    
+  //temporary
+  if (assoc == FC_AT_WHOLE_DATASET || assoc == FC_AT_WHOLE_MESH) {
+    fc_printfErrorMessage("not handling globals at this time");
+    return FC_INPUT_ERROR;
+  }
+  if (assoc != FC_AT_VERTEX && assoc != FC_AT_ELEMENT){
+    fc_printfErrorMessage("only handling vertex and element vars at this time");
+    return FC_INPUT_ERROR;
+  }
+  //check appropriateness of meshes - are there enough of this entity in
+  //the dest mesh (should we check dimension etc?)
+  rc = fc_getMeshNumEntity(dest_mesh, assoc, &numEntity); 
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+  if (numEntity < numDataPoint) {
+    fc_printfErrorMessage("%s: destination mesh not compatible with src variable", 
+			  fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  //does the var already exist?
+  rc = fc_getVariableByName(dest_mesh, newName, &numExist, &existVars);
+  if (rc != FC_SUCCESS){
+    fc_printfErrorMessage("Failed to get info for curr variable on dest mesh");
+    return rc;
+  }    
+  if (numExist > 1){
+    fc_printfErrorMessage("Cannot copy region var onto new mesh since there is more than 1 instance there");
+    free(existVars);
+    return FC_ERROR;
+  }
+  if (numExist == 1){
+    //check to see if it is compatable
+    rc = fc_getVariableInfo(existVars[0], &currnumDataPoint, &currnumComponent,
+			  &currassoc,&currmathtype,&currdatatype);
+    
+    if (rc != FC_SUCCESS) {
+      fc_printfErrorMessage("Failed to get info for curr variable on dest mesh");
+      free(existVars);
+      return rc;
+    }
+    if (currnumComponent != numComponent){
+      fc_printfErrorMessage("Cannot copy region var onto mesh because of existing numComponent incompatability");
+      free(existVars);
+      return FC_INPUT_ERROR;
+    }
+    if (currassoc != assoc){
+      fc_printfErrorMessage("Cannot copy region var onto mesh because of existing assoc incompatability");
+      free(existVars);
+      return FC_INPUT_ERROR;
+    }
+    if (currmathtype != mathtype){
+      fc_printfErrorMessage("Cannot copy region var onto mesh because of existing mathtype incompatability");
+      free(existVars);
+      return FC_INPUT_ERROR;
+    }
+    if (currdatatype != datatype){
+      fc_printfErrorMessage("Cannot copy region var onto mesh because of existing datatype incompatability");
+      free(existVars);
+      return FC_INPUT_ERROR;
+    }
+  }
+
+  // --- do it
+  rc = fc_getVariableDataPtr(src_var, &data);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get data for variable '%s'",
+                          varSlot->header.name);
+    return rc;
+  }
+  rc = fc_getVariableDataPtr(mapping, &mappingdata);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get data for mapping variable");
+    free(data);
+    return rc;
+  }
+
+  if (numExist == 0){
+    // create the new data
+    switch(datatype){
+    case FC_DT_INT:
+      new_data = calloc(numEntity*numComponent,sizeof(int));
+      if (new_data == NULL){
+	fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	return FC_MEMORY_ERROR;
+      }
+      if (fillval != NULL){
+	for (i = 0; i < numEntity*numComponent; i++){
+	  ((int*)new_data)[i] = *((int*)fillval);
+	}
+      }
+      break;
+    case FC_DT_DOUBLE:
+      new_data = calloc(numEntity*numComponent,sizeof(double));
+      if (new_data == NULL){
+	fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	return FC_MEMORY_ERROR;
+      }
+      if (fillval != NULL){
+	for (i = 0; i < numEntity*numComponent; i++){
+	  ((double*)new_data)[i] = *((double*)fillval);
+	}
+      }
+      break;
+    case FC_DT_FLOAT:
+      new_data = calloc(numEntity*numComponent,sizeof(float));
+      if (new_data == NULL){
+	fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	return FC_MEMORY_ERROR;
+      }
+      if (fillval != NULL){
+	for (i = 0; i < numEntity*numComponent; i++){
+	  ((float*)new_data)[i] = *((float*)fillval);
+	}
+      }
+      break;
+    case FC_DT_CHAR:
+      new_data = calloc(numEntity*numComponent,sizeof(char));
+      if (new_data == NULL){
+	fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	return FC_MEMORY_ERROR;
+      }
+      if (fillval != NULL){
+	for (i = 0; i < numEntity*numComponent; i++){
+	  ((char*)new_data)[i] = *((char*)fillval);
+	}
+      }
+      break;
+    default:
+      //shouldnt happen
+      fc_printfErrorMessage("Cannot handle datatype %d", datatype);
+      return FC_ERROR;
+    }
+  } else {
+    //will write it into the current data
+    rc = fc_getVariableDataPtr(existVars[0], &currdata);
+    if (rc != FC_SUCCESS) {
+      fc_printfErrorMessage("Failed to get data for variable '%s'",
+			    varSlot->header.name);
+      free(existVars);
+      return rc;
+    }
+    new_data = currdata;
+  }
+
+  for (i = 0; i < numDataPoint; i++){
+    int meshpt;
+    switch(mappingdatatype){
+    case FC_DT_DOUBLE:
+      meshpt = (int)floor((((double*) mappingdata)[i])+0.5);
+      break;
+    case FC_DT_FLOAT:
+      meshpt = (int)floor((((float*) mappingdata)[i])+0.5);
+      break;
+    case FC_DT_INT:
+      meshpt = ((int*) mappingdata)[i];
+      break;
+    default:
+      //wont happen
+      break;
+    }
+    //is it a valid pt?
+    if (meshpt >= numEntity){
+      fc_printfWarningMessage("Invalid mapping val.not copying this point");
+    } else {
+      switch (datatype){
+      case FC_DT_INT:
+	for (j = 0; j < numComponent; j++){
+	  ((int*)new_data)[meshpt*numComponent+j] = ((int*)data)[i*numComponent+j];
+	}
+	break;
+      case FC_DT_DOUBLE:
+	for (j = 0; j < numComponent; j++){
+	  //	printf("replacing big mesh pt %d with curr val %g with small mesh pt %d with val %g\n",
+	  //	       (meshpt*numComponent+j), ((double*)new_data)[meshpt*numComponent+j],
+	  //	       (i*numComponent+j), ((double*)data)[i*numComponent+j]);
+	  ((double*)new_data)[meshpt*numComponent+j] = ((double*)data)[i*numComponent+j];
+	}
+	break;
+      case FC_DT_FLOAT:
+	for (j = 0; j < numComponent; j++){
+	  ((float*)new_data)[meshpt*numComponent+j] = ((float*)data)[i*numComponent+j];
+	}
+	break;
+      case FC_DT_CHAR:
+	for (j = 0; j < numComponent; j++){
+	  ((char*)new_data)[meshpt*numComponent+j] = ((char*)data)[i*numComponent+j];
+	}
+	break;
+      default:
+	//wont happen
+	break;
+      }
+    }
+  }
+
+  if (numExist == 0){
+    rc = fc_createVariable(dest_mesh, newName, new_var);
+    if (rc != FC_SUCCESS) {
+      fc_printfErrorMessage("Failed to create new variable '%s'", newName);
+      return rc;
+    }
+    
+    rc = fc_setVariableDataPtr(*new_var, numEntity, numComponent, assoc, mathtype, 
+			    datatype, new_data);
+    if (rc != FC_SUCCESS) {
+      fc_printfErrorMessage("Failed to set data for variable '%s'", newName);
+      return rc;
+    }
+  } else {
+    //this was newly allocated memory
+    *new_var = existVars[0];
+    free(existVars);
+  }
+
+  return FC_SUCCESS;
+}
+
+
+/**
+ * \ingroup  Variable
+ * \brief  Copy a variable defined on a smaller mesh into a var on a bigger one
+ *
+ * \description
+ *   This is like fc_copyVariableFromRegionMesh, but where you
+ *   are copying into a specific step of a seq var.
+ *
+ *   Note; if there is an invlaid mapping meshpt, it just wont copy that val.
+ *
+ *   \todo
+ *   - change so fails if invalid mapping
+ *
+ *  \modifications
+ *   - 07/20/08 ACG - revamp from prev version that passed in the handle to the var
+ */
+FC_ReturnCode fc_copySeqVariableStepFromRegionMesh( FC_Variable src_var, /**< Input - the source variable to be copied */
+						    FC_Mesh dest_mesh, /**< Input - the dest mesh */
+						    FC_Sequence dest_seq, /**< Input - the dest seq */
+						    int targetStep, /**< Input - which step in the seq to put the data */
+						    FC_Variable mapping, /**< Input - mapping var */
+						    void* fillval, /**< Input - optional default fill var only applicable if creating the var */
+						    char* dest_seqvarName, /**< Input - name of new seq var on dest mesh. If NULL the name of the src_var is used */
+						    FC_Variable** dest_seqvar /**< Output - the resulting seq var */
+) { 
+  FC_ReturnCode rc;
+  _FC_VarSlot *varSlot_s;
+  FC_Variable **seqVars, *dest_sv;
+  char* meshname;
+  char* dest_svName = NULL;
+  int numSeqVar, *numStepPerSeqVar, numStep;
+  int numDataPoint,currnumDataPoint, numComponent, currnumComponent;
+  int mappingnumdp,mappingnumc;
+  FC_AssociationType assoc, currassoc, mappingassoc;
+  FC_MathType mathtype, currmathtype, mappingmathtype;
+  FC_DataType datatype, currdatatype, mappingdatatype;
+  void *data, *new_data, *mappingdata;
+  int numEntity;
+  int i, j;
+
+
+  // default return
+  if (dest_seqvar)
+    *dest_seqvar = NULL;
+
+
+  //test input
+  varSlot_s = _fc_getVarSlot(src_var);
+  if (varSlot_s == NULL || !fc_isVariableValid(mapping) || !fc_isMeshValid(dest_mesh) ||
+      !fc_isSequenceValid(dest_seq) || targetStep < 0 || !fc_isVariableValid(mapping)){
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  rc = fc_getSequenceNumStep(dest_seq, &numStep);
+  if (rc != FC_SUCCESS){
+    fc_printfErrorMessage("Cannot get seq num step");
+    return rc;
+  }
+
+  if (numStep < targetStep){
+    fc_printfErrorMessage("Target step is greater than num step in sequence");
+    return FC_INPUT_ERROR;
+  }
+
+  // log message
+  rc = fc_getMeshName(dest_mesh, &meshname);
+  if (rc != FC_SUCCESS){
+    fc_printfErrorMessage("Cannot get mesh name");
+    return FC_ERROR;
+  }
+  if (dest_seqvarName == NULL){
+    rc = fc_getVariableName(src_var, &dest_svName);
+    if (rc != FC_SUCCESS){
+      fc_printfErrorMessage("Cannot get var name");
+      free(meshname);
+      return FC_ERROR;
+    }
+  } else {
+    dest_svName = dest_seqvarName;
+  }
+
+  
+  fc_printfLogMessage("Copying region variable '%s' to '%s' of mesh '%s'", 
+                      varSlot_s->header.name, meshname, dest_svName);
+  free(meshname);
+
+  //check consistency of src_var and mapping var
+  rc = fc_getVariableInfo(mapping, &mappingnumdp, &mappingnumc,
+			  &mappingassoc,&mappingmathtype,&mappingdatatype);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get info for mapping variable");
+    if (dest_seqvarName == NULL) free (dest_svName);
+    return rc;
+  }
+  rc = fc_getVariableInfo(src_var, &numDataPoint, &numComponent,
+			  &assoc,&mathtype,&datatype);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get info for src variable");
+    if (dest_seqvarName == NULL) free (dest_svName);
+    return rc;
+  }
+
+    //NOTE: from writeout - this may be a double
+  //  if (mappingdatatype != FC_DT_INT){
+  //    fc_printfErrorMessage("mapping variable must be FC_DT_INT");
+  //    return FC_INPUT_ERROR;
+  //  }
+  if (mappingdatatype != FC_DT_INT && mappingdatatype != FC_DT_DOUBLE &&
+      mappingdatatype != FC_DT_FLOAT){
+    fc_printfErrorMessage("mappingdatatype must be numeric");
+    if (dest_seqvarName == NULL) free (dest_svName);
+    return FC_INPUT_ERROR;
+  }
+  if (mappingnumc != 1){
+    fc_printfErrorMessage("mapping variable must be single component");
+    if (dest_seqvarName == NULL) free (dest_svName);
+    return FC_INPUT_ERROR;
+  }
+  if (mappingassoc != assoc){
+    fc_printfErrorMessage("mapping variable and src variable must have same assoc");
+    if (dest_seqvarName == NULL) free (dest_svName);
+    return FC_INPUT_ERROR;
+  }
+  if (datatype != FC_DT_INT && datatype != FC_DT_DOUBLE && datatype != FC_DT_FLOAT &&
+      datatype != FC_DT_CHAR){
+    fc_printfErrorMessage("src variable must have known type");
+    if (dest_seqvarName == NULL) free (dest_svName);
+    return FC_INPUT_ERROR;
+  }
+    
+
+  switch (assoc){
+  case FC_AT_ELEMENT:
+    rc = fc_getMeshInfo(dest_mesh, NULL, NULL, NULL, &numEntity, NULL);
+    break;
+  case FC_AT_VERTEX:
+    rc = fc_getMeshInfo(dest_mesh, NULL, NULL, &numEntity, NULL, NULL);
+    break;
+  default:
+    //temporary
+    if (assoc == FC_AT_WHOLE_DATASET || assoc == FC_AT_WHOLE_MESH) {
+      fc_printfErrorMessage("not handling globals at this time");
+    } else {
+      fc_printfErrorMessage("only handling vertex and element vars at this time");
+    }
+    if (dest_seqvarName == NULL) free (dest_svName);
+    return FC_ERROR; //shouldnt happen at this point
+  }
+
+
+  //check consistency of dest var
+  //do we have a dest var?
+  //only get it if it exists, dont do the component coalescing
+  rc = fc_getSeqVariableByName(dest_mesh,dest_seqvarName, &numSeqVar, &numStepPerSeqVar,
+				    &seqVars);
+  if (rc != FC_SUCCESS){
+    fc_printfErrorMessage("Cannot get seq var by name");
+    if (dest_seqvarName == NULL) free (dest_svName);
+    return rc;
+  }
+  if (numSeqVar > 1){
+    fc_printfErrorMessage("Cannot find unique seq var to copy to");
+    for (i = 0; i < numSeqVar; i++)
+      free(seqVars[i]);
+    free(seqVars);
+    free(numStepPerSeqVar);
+    if (dest_seqvarName == NULL) free (dest_svName);
+    return FC_INPUT_ERROR;
+  }
+  if (numSeqVar == 0){
+    int num;
+
+    //create the seq var
+    // printf("Creating main var <%s>\n",dest_svName);
+    
+    rc = fc_createSeqVariable(dest_mesh, dest_seq,
+			     dest_svName, &num, &dest_sv);
+    if (rc != FC_SUCCESS){
+      fc_printfErrorMessage("Cannot make seq var");
+      if (dest_seqvarName == NULL) free (dest_svName);
+      return rc;
+    }
+
+    switch (datatype){
+    case FC_DT_INT:
+      new_data = calloc(numEntity*numComponent,sizeof(int));
+     if (new_data == NULL){
+       fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+       return FC_MEMORY_ERROR;
+     }
+     if (fillval != NULL){
+       for (i = 0; i < numEntity*numComponent; i++){
+	 ((int*)new_data)[i] = *((int*)fillval);
+       }
+     }
+     break;
+   case FC_DT_DOUBLE:
+     new_data = calloc(numEntity*numComponent,sizeof(double));
+     if (new_data == NULL){
+       fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+       return FC_MEMORY_ERROR;
+     }
+     if (fillval != NULL){
+       for (i = 0; i < numEntity*numComponent; i++){
+	 ((double*)new_data)[i] = *((double*)fillval);
+       }
+     }
+     break;
+   case FC_DT_FLOAT:
+     new_data = calloc(numEntity*numComponent,sizeof(float));
+     if (new_data == NULL){
+       fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+       return FC_MEMORY_ERROR;
+     }
+     if (fillval != NULL){
+       for (i = 0; i < numEntity*numComponent; i++){
+	 ((float*)new_data)[i] = *((float*) fillval);
+       }
+     }
+     break;
+   case FC_DT_CHAR:
+     new_data = calloc(numEntity*numComponent,sizeof(char));
+     if (new_data == NULL){
+       fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+       return FC_MEMORY_ERROR;
+     }
+     if (fillval != NULL){
+       for (i = 0; i < numEntity*numComponent; i++){
+	 ((char*)new_data)[i] = *((char*) fillval);
+       }
+     }
+     break;
+   default:
+     //shouldnt happen
+     fc_printfErrorMessage("Cannot handle datatype %d", datatype);
+     free(dest_sv); 
+     free(new_data);
+     return FC_ERROR;
+    }
+  
+    for (i = 0; i < numStep; i++){
+      rc = fc_setVariableData(dest_sv[i], numEntity, numComponent,
+			      assoc, mathtype, datatype, new_data);
+      if (rc != FC_SUCCESS){
+	fc_printfErrorMessage("cannot set variable data");
+	free(dest_sv);
+	free(new_data);
+	return rc;
+      }
+    }
+    free(new_data);
+    if (dest_seqvarName == NULL) free (dest_svName);
+  } else {
+    //we have the seq var
+    FC_Sequence tempseq;
+
+    rc = fc_getSequenceFromSeqVariable(numStep,seqVars[0], &tempseq);
+    if (rc != FC_SUCCESS){
+      fc_printfErrorMessage("Cannot get sequence from seq var");
+      for (i = 0; i < numSeqVar; i++)
+	free(seqVars[i]);
+      free(seqVars);
+      free(numStepPerSeqVar);
+      if (dest_seqvarName == NULL) free (dest_svName);
+      return rc;
+    } 
+    if (!FC_HANDLE_EQUIV(tempseq, dest_seq)){
+      fc_printfErrorMessage("Already have a seq var by this name by on another seq");
+      for (i = 0; i < numSeqVar; i++)
+	free(seqVars[i]);
+      free(seqVars);
+      free(numStepPerSeqVar);
+      if (dest_seqvarName == NULL) free (dest_svName);
+      return rc;
+    }
+    dest_sv = (FC_Variable*)malloc(numStep*sizeof(FC_Variable));
+    for (i = 0; i < numStep; i++){
+      dest_sv[i] = seqVars[0][i];
+    }
+    free(numStepPerSeqVar);
+    free(seqVars[0]);
+    free(seqVars);
+    if (dest_seqvarName == NULL) free (dest_svName);
+
+    //now check this var (will check at all time steps)
+    for (i = 0; i < numStep; i++){
+      rc = fc_getVariableInfo(dest_sv[i], &currnumDataPoint, &currnumComponent,
+			      &currassoc,&currmathtype,&currdatatype);
+      if (rc != FC_SUCCESS) {
+	fc_printfErrorMessage("Failed to get info for curr variable on dest mesh");
+	free(dest_sv);
+	return rc;
+      }
+
+      if (currnumDataPoint < numDataPoint) {
+	printf("dest = %d src = %d\n",currnumDataPoint, numDataPoint);
+	fc_printfErrorMessage("%s: destination variable not compatible with src variable", 
+			      fc_getReturnCodeText(FC_INPUT_ERROR));
+	free(dest_sv);
+	return FC_INPUT_ERROR;
+      }
+
+      if (currnumComponent != numComponent){
+	fc_printfErrorMessage("Cannot copy region var onto mesh because of existing numComponent incompatability");
+	free(dest_sv);
+	return FC_INPUT_ERROR;
+      }
+
+      if (currassoc != assoc){
+	fc_printfErrorMessage("Cannot copy region var onto mesh because of existing assoc incompatability");
+	free(dest_sv);
+
+	return FC_INPUT_ERROR;
+      }
+
+      if (currmathtype != mathtype){
+	fc_printfErrorMessage("Cannot copy region var onto mesh because of existing mathtype incompatability");
+	free(dest_sv);
+	return FC_INPUT_ERROR;
+      }
+
+      if (currdatatype != datatype){
+	fc_printfErrorMessage("Cannot copy region var onto mesh because of existing datatype incompatability");
+	free(dest_sv);
+	return FC_INPUT_ERROR;
+      }
+    }
+
+  } //create or get the dest var
+
+  // --- now do it
+  rc = fc_getVariableDataPtr(src_var, &data);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get data for variable '%s'",
+                          varSlot_s->header.name);
+    free(dest_sv);
+    return rc;
+  }
+  rc = fc_getVariableDataPtr(mapping, &mappingdata);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get data for mapping variable");
+    free(data);
+    free(dest_sv);
+    return rc;
+  }
+
+  //will write it into the current data
+  rc = fc_getVariableDataPtr(dest_sv[targetStep], &new_data);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get data for dest variable");
+    free(dest_sv);
+    return rc;
+  }
+  for (i = 0; i < numDataPoint; i++){
+    int meshpt;
+
+    switch(mappingdatatype){
+    case FC_DT_DOUBLE:
+      meshpt = (int)floor((((double*) mappingdata)[i])+0.5);
+      break;
+    case FC_DT_FLOAT:
+      meshpt = (int)floor((((float*) mappingdata)[i])+0.5);
+      break;
+    case FC_DT_INT:
+      meshpt = ((int*) mappingdata)[i];
+      break;
+    default:
+      fc_printfErrorMessage("DEVELOPER ERROR: should not happen\n");
+      return FC_ERROR;
+      break;
+    }
+    //is it a valid pt?
+    if (meshpt >= numEntity){
+      fc_printfWarningMessage("Invalid mapping val.not copying this point");
+    } else {
+      switch (datatype){
+      case FC_DT_INT:
+	for (j = 0; j < numComponent; j++){
+	  //	  printf("replacing big mesh pt %d with small mesh pt %d curr val %d to val %d\n",
+	  //		 (meshpt*numComponent+j), (i*numComponent+j), 
+	  //		 ((int*)new_data)[meshpt*numComponent+j],((int*)data)[i*numComponent+j]);
+	  ((int*)new_data)[meshpt*numComponent+j] = ((int*)data)[i*numComponent+j];
+	}
+	break;
+      case FC_DT_DOUBLE:
+	for (j = 0; j < numComponent; j++){
+	  ((double*)new_data)[meshpt*numComponent+j] = ((double*)data)[i*numComponent+j];
+	}
+	break;
+      case FC_DT_FLOAT:
+	for (j = 0; j < numComponent; j++){
+	  ((float*)new_data)[meshpt*numComponent+j] = ((float*)data)[i*numComponent+j];
+	}
+	break;
+      case FC_DT_CHAR:
+	for (j = 0; j < numComponent; j++){
+	  ((char*)new_data)[meshpt*numComponent+j] = ((char*)data)[i*numComponent+j];
+	}
+	break;
+      default:
+	fc_printfErrorMessage("DEVELOPER ERROR: should not happen\n");
+	return FC_ERROR;
+	break;
+      }
+    }
+  }
+
+  *dest_seqvar = dest_sv;
+  return FC_SUCCESS;
+}
+
+
+/**
+ * \ingroup  Variable
+ * \brief  Copy a variable defined on a larger mesh onto a smaller one
+ *
+ * \description
+ *  
+ *    Copy a variable defined on a larger mesh onto a smaller one.
+ *    Meshes can be on different datasets.
+ *    This is intended for cases where you may promote a subset to
+ *    a mesh (becuase, for instance, it corresponds to a ROI) 
+ *    and want to copy vars from the orginal mesh onto the new one
+ *    using the mapping var that is on the smaller one.
+ *    THis is particularly useful when the smaller one is created
+ *    from a time step of the larger mesh and therefore you
+ *    want only the data of a seq var at that time in the
+ *    larger mesh to become a var on the smaller mesh.
+ *
+ *    newName is the name of the var on the dest mesh.
+ *    it must not preexist there. 
+ *    The vals from the srv_var are copied over
+ *    according to the mapping. 
+ *
+ *    The entity mapping takes the form of another variable of the
+ *    same association that contains the ID numbers of the corresponding
+ *    entity type in the larger mesh. It is assumed that this is created
+ *    at the time of promoting the subset to the mesh. Note that this
+ *    is different that the lookup table ids since these go from
+ *    currmesh to prev mesh, as opposed to the original on disk 
+ *    numbering to the new fclib numbering.
+ *
+ *    Note this does not check the coords or the conns to see if they
+ *    are the same on the 2 meshes, it only goes by the mapping numbers.
+ *
+ *    Note that since we can only write out variables as attributes in 
+ *    exodus and therefore as doubles, the mapping var may not be explictly
+ *    FC_DT_INT. We may want to explictly convert this on read in. For now
+ *    we will just cast/round the val to an int if it is a float or double.
+ *
+ *    Note if mapping var in orig (not region) mesh is invalid that
+ *    point is not copied.
+ *
+ *    Fails if the variable already exists on the region mesh.
+ *
+ * \todo
+ *   - fix the rounding. couldnt get round or rint to work.
+ *   - prob should put the conversion for the region variable
+ *     when it is read in from exodus.
+ *   - change so function fails in invalid mapping data.
+ *
+ * \modifications 
+ *   - 06/20/08 ACG Created
+ */
+FC_ReturnCode fc_copyVariableToRegionMesh(
+  FC_Variable src_var, /**< Input - the source variable to be copied */
+  FC_Mesh dest_mesh,   /**< Input - the destination mesh to be copied into */
+  FC_Variable mapping, /**< Input - int var that contains the orig numbers corresponding to the region mesh */
+  void* fillval,       /**< Input - optional variable fill value for entities not in the map */
+  char *newName,       /**< Input - the name of the new variable, a NULL value
+                            is a flag to use the name of the source variable */
+  FC_Variable* new_var /**< Output - handle to the new variable */
+) { 
+  FC_ReturnCode rc;
+  _FC_VarSlot* varSlot;
+  FC_Variable* existVars;
+  int numExist;
+  int numDataPoint, numComponent, numEntity;
+  int mappingnumdp,mappingnumc;
+  FC_AssociationType assoc, mappingassoc;
+  FC_MathType mathtype, mappingmathtype;
+  FC_DataType datatype, mappingdatatype;
+  void *data, *new_data, *mappingdata;
+  int i, j;
+  
+  // default return value
+  if (new_var)
+    *new_var = FC_NULL_VARIABLE;
+
+  // check input - NULL name is o.k.
+  varSlot = _fc_getVarSlot(src_var);
+  if (varSlot == NULL || !fc_isVariableValid(mapping) || !fc_isMeshValid(dest_mesh)
+      || new_var == NULL){
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  // test for NULL name
+  if (newName == NULL)
+    newName = varSlot->header.name;
+
+  // log message
+  fc_printfLogMessage("Copying region variable '%s' to '%s'", 
+                      varSlot->header.name, newName);
+
+  //more checking
+  rc = fc_getVariableInfo(mapping, &mappingnumdp, &mappingnumc,
+			  &mappingassoc,&mappingmathtype,&mappingdatatype);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get info for mapping variable");
+    return rc;
+  }
+  rc = fc_getVariableInfo(src_var, &numDataPoint, &numComponent,
+			  &assoc,&mathtype,&datatype);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get info for src variable");
+    return rc;
+  }
+
+  //NOTE: from writeout - this may be a double
+  //  if (mappingdatatype != FC_DT_INT){
+  //    fc_printfErrorMessage("mapping variable must be FC_DT_INT");
+  //    return FC_INPUT_ERROR;
+  //  }
+  if (mappingdatatype != FC_DT_INT && mappingdatatype != FC_DT_DOUBLE &&
+      mappingdatatype != FC_DT_FLOAT){
+    fc_printfErrorMessage("mappingdatatype must be numeric");
+    return FC_INPUT_ERROR;
+  }
+  if (mappingnumc != 1){
+    fc_printfErrorMessage("mapping variable must be single component");
+    return FC_INPUT_ERROR;
+  }
+  if (mappingassoc != assoc){
+    fc_printfErrorMessage("mapping variable and src variable must have same assoc");
+    return FC_INPUT_ERROR;
+  }
+  if (datatype != FC_DT_INT && datatype != FC_DT_DOUBLE && datatype != FC_DT_FLOAT &&
+      datatype != FC_DT_CHAR){
+    fc_printfErrorMessage("src variable must have known type");
+    return FC_INPUT_ERROR;
+  }
+    
+  //temporary
+  if (assoc == FC_AT_WHOLE_DATASET || assoc == FC_AT_WHOLE_MESH) {
+    fc_printfErrorMessage("not handling globals at this time");
+    return FC_INPUT_ERROR;
+  }
+  if (assoc != FC_AT_VERTEX && assoc != FC_AT_ELEMENT){
+    fc_printfErrorMessage("only handling vertex and elem vars at this time");
+    return FC_INPUT_ERROR;
+  }
+  //check appropriateness of meshes - are there enough of this entity in
+  //the dest mesh (should we check dimension etc?)
+  rc = fc_getMeshNumEntity(dest_mesh, assoc, &numEntity); 
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+  if (numEntity > numDataPoint) {
+    fc_printfErrorMessage("%s: destination mesh not compatible with src variable", 
+			  fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  //does the var already exist?
+  rc = fc_getVariableByName(dest_mesh, newName, &numExist, &existVars);
+  if (rc != FC_SUCCESS){
+    fc_printfErrorMessage("Failed to get info for curr variable on dest mesh");
+    return rc;
+  }    
+  if (numExist > 0){
+    fc_printfErrorMessage("Cannot copy var onto new (region) mesh since there is more than 0 instance there");
+    free(existVars);
+    return FC_ERROR;
+  }
+
+
+  // --- do it
+  rc = fc_getVariableDataPtr(src_var, &data);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get data for variable '%s'",
+                          varSlot->header.name);
+    return rc;
+  }
+  rc = fc_getVariableDataPtr(mapping, &mappingdata);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get data for mapping variable");
+    free(data);
+    return rc;
+  }
+
+  // create the new data
+  switch(datatype){
+  case FC_DT_INT:
+    new_data = calloc(numEntity*numComponent,sizeof(int));
+    if (new_data == NULL){
+      fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+      return FC_MEMORY_ERROR;
+    }
+    if (fillval != NULL){
+      for (i = 0; i < numEntity*numComponent; i++){
+	((int*)new_data)[i] = *((int*)fillval);
+      }
+  }
+  break;
+ case FC_DT_DOUBLE:
+   new_data = calloc(numEntity*numComponent,sizeof(double));
+   if (new_data == NULL){
+     fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+     return FC_MEMORY_ERROR;
+   }
+   if (fillval != NULL){
+     for (i = 0; i < numEntity*numComponent; i++){
+       ((double*)new_data)[i] = *((double*)fillval);
+     }
+   }
+   break;
+ case FC_DT_FLOAT:
+   new_data = calloc(numEntity*numComponent,sizeof(float));
+   if (new_data == NULL){
+     fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+     return FC_MEMORY_ERROR;
+   }
+   if (fillval != NULL){
+     for (i = 0; i < numEntity*numComponent; i++){
+       ((float*)new_data)[i] = *((float*)fillval);
+     }
+   }
+   break;
+ case FC_DT_CHAR:
+   new_data = calloc(numEntity*numComponent,sizeof(char));
+   if (new_data == NULL){
+     fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+     return FC_MEMORY_ERROR;
+   }
+   if (fillval != NULL){
+     for (i = 0; i < numEntity*numComponent; i++){
+       ((char*)new_data)[i] = *((char*)fillval);
+     }
+   }
+   break;
+ default:
+   //shouldnt happen
+   fc_printfErrorMessage("Cannot handle datatype %d", datatype);
+   return FC_ERROR;
+  }
+
+  //look thru the map to find the orig and dest mapping for this var
+  for (i = 0; i < numEntity; i++){
+    int meshpt;
+    switch(mappingdatatype){
+    case FC_DT_DOUBLE:
+      meshpt = (int)floor((((double*) mappingdata)[i])+0.5);
+      break;
+    case FC_DT_FLOAT:
+      meshpt = (int)floor((((float*) mappingdata)[i])+0.5);
+      break;
+    case FC_DT_INT:
+      meshpt = ((int*) mappingdata)[i];
+      break;
+    default:
+      //wont happen
+      break;
+    }
+    if (meshpt >= numDataPoint){
+      fc_printfWarningMessage("Invalid mapping val.not copying this point");
+    } else {
+      switch (datatype){
+      case FC_DT_INT:
+	for (j = 0; j < numComponent; j++){
+	  ((int*)new_data)[i*numComponent+j] = ((int*)data)[meshpt*numComponent+j];
+	}
+	break;
+      case FC_DT_DOUBLE:
+	for (j = 0; j < numComponent; j++){
+	  ((double*)new_data)[i*numComponent+j] = ((double*)data)[meshpt*numComponent+j];
+	}
+	break;
+      case FC_DT_FLOAT:
+	for (j = 0; j < numComponent; j++){
+	  ((float*)new_data)[i*numComponent+j] = ((float*)data)[meshpt*numComponent+j];
+	}
+	break;
+      case FC_DT_CHAR:
+	for (j = 0; j < numComponent; j++){
+	  ((char*)new_data)[i*numComponent+j] = ((char*)data)[meshpt*numComponent+j];
+	}
+	break;
+      default:
+	//wont happen
+	break;
+      }
+    }
+  }
+
+  rc = fc_createVariable(dest_mesh, newName, new_var);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to create new variable '%s'", newName);
+    return rc;
+  }
+    
+  rc = fc_setVariableDataPtr(*new_var, numEntity, numComponent, assoc, mathtype, 
+			     datatype, new_data);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to set data for variable '%s'", newName);
+    return rc;
+  }
+
+  return FC_SUCCESS;
+}
+
+
 /**
  * \ingroup  Variable
  * \brief  Copies a Variable and (optionally) converts to a new association type
@@ -1355,6 +2424,7 @@ FC_ReturnCode fc_copySeqVariable(
 
   return rc;
 }
+
 
 /**
  * \ingroup  Variable
@@ -3058,13 +4128,10 @@ FC_ReturnCode fc_getVariableByName(
  * \description
  *  
  *    Returns variables on the mesh with the specified base 
- *    name and _x,_y,_z extensions.
+ *    name and _x,_y,_z and similiar extensions.
  *    This is meant to be used to build an array of components
  *    split with the exodus component naming convention.
  *
- *
- * \todo
- *   - make this work with _c0, _c1 etc extensions
  *
  * \modifications  
  *   - 10/11/2007 ACG created
@@ -3078,12 +4145,19 @@ FC_ReturnCode fc_getVariableComponentsByName(
 ) {
   _FC_MeshSlot* meshSlot;
   FC_Variable* returnVars;
-  int numReturnVars;
-  char* compname;
+  char* compName;
 
-  char vector_endings[3][2] = { "x", "y", "z" };
-  int found[3];
-  int i;
+
+  int numComp;
+  unsigned int lastCompInGuess;
+  unsigned int lastCompInSearch;
+  unsigned int maxExtLen;
+  unsigned int maxComp;
+  unsigned int varNameLen;
+  
+  unsigned int extState;
+
+
   FC_ReturnCode rc;
   
   // default values returned if anything goes wrong
@@ -3105,66 +4179,89 @@ FC_ReturnCode fc_getVariableComponentsByName(
   // log message
   fc_printfLogMessage("Getting variable components '%s'", varname);
 
-  compname = (char*)malloc((strlen(varname)+3)*sizeof(char));
-  returnVars = (FC_Variable*)malloc(3*sizeof(FC_Variable));
-  if (!compname || !returnVars){
-    return FC_MEMORY_ERROR;
+
+  //First, query component function to see what the guesses look like
+  rc = _fc_getNextComponentExtension(NULL, &maxExtLen, &maxComp, NULL);
+  if(rc!=FC_SUCCESS){
+    return rc;
   }
 
-  for (i = 0; i < 3; i++){
+  //Allocate working space for temporary data
+  compName   = (char *)       malloc(strlen(varname)+maxExtLen);
+  returnVars = (FC_Variable *)malloc(maxComp*sizeof(FC_Variable));
+  if (!compName || !returnVars){
+    free(compName); free(returnVars);
+    return FC_MEMORY_ERROR;
+  }
+  varNameLen = strlen(varname); 
+  strcpy(compName, varname); //search name always starts with varname
+
+  for(numComp=0, extState=0, lastCompInGuess=0, lastCompInSearch=0; !lastCompInSearch; ){
     int numVar;
     FC_Variable *tempVars;
 
-    found[i] = 0;
-    sprintf(compname, "%s_%s",varname,vector_endings[i]);
-    rc = fc_getVariableByName(mesh, compname,
-			      &numVar, &tempVars);
-    if (rc != FC_SUCCESS){
-      free(compname);
+    rc = _fc_getNextComponentExtension(&extState,  
+				       &lastCompInGuess, &lastCompInSearch, 
+				       &compName[varNameLen]);
+    if(rc!=FC_SUCCESS){
+      free(compName);
       return rc;
     }
+    //printf("Checking '%s'\n",compName);
 
-    if (numVar > 1){
-      free(tempVars);
-      free(compname);
+    //Look for this variable
+    rc = fc_getVariableByName(mesh, compName,&numVar, &tempVars);
+    if (rc != FC_SUCCESS){
+      free(compName);
+      return rc;
+    }
+   
+    if(numVar>1){
+      //Multiple occurrences of this variable
+      free(compName); free(returnVars); free(tempVars); 
       return FC_INPUT_ERROR;
+
     } else if (numVar == 1){
-      returnVars[i] = tempVars[0];
-      found[i] = 1;
+      //Found another proper match in this guess
+      returnVars[numComp] = tempVars[0];
       free(tempVars);
+      numComp++;
+
+      if(lastCompInGuess){
+	//We hit all components, stop searching. Resize the data
+	//printf("Found complete set\n");
+	*variables = (FC_Variable *)realloc(returnVars, numComp*sizeof(FC_Variable));
+	free(compName);
+	if(!(*variables)){
+	  free(returnVars); 
+	  return FC_MEMORY_ERROR;
+	}
+	*type = FC_MT_VECTOR;
+	*numVariables = numComp;
+	return FC_SUCCESS;
+      }
+
     } else {
-      //do nothing
+      //found nothing, forget this guess
+      //Nothing to free, just tell guessing engine to skip to next
+      while(!lastCompInGuess){
+	rc = _fc_getNextComponentExtension(&extState, &lastCompInGuess, &lastCompInSearch, NULL);
+	if(rc!=FC_SUCCESS){
+	  free(compName); free(returnVars); 
+	  return rc;
+	}
+      }
+      numComp=0;
     }
   }
-
-  free(compname);
-  //make sure no skips
-  for (i = 0; i < 2; i++){
-    if (found[i] == 0 && found[i+1] == 1){
-      free(returnVars);
-      return FC_INPUT_ERROR;
-    }
-  }
-
-  numReturnVars = 0;
-  for (i = 0; i < 3; i++){
-    numReturnVars+= found[i];
-  }
-  if (numReturnVars > 0){
-    *variables = (FC_Variable*)malloc(numReturnVars*sizeof(FC_Variable));
-    if (!(*variables)){
-      return FC_MEMORY_ERROR;
-    }
-    for (i = 0; i < numReturnVars; i++){
-      (*variables)[i] = returnVars[i];
-    }
-    *type = FC_MT_VECTOR;
-  }
-  free(returnVars);
-
-  *numVariables = numReturnVars;
+  //printf("Not found\n");
+  //Ran through all guesses, but no matches
+  *numVariables = 0;
+  free(compName); free(returnVars);
   return FC_SUCCESS;
 }
+
+
 
 
 /**
@@ -3405,16 +4502,20 @@ FC_ReturnCode fc_getSeqVariableByName(
  * \description
  *  
  *    Returns seq variables on the mesh with the specified base 
- *    name and _x,_y,_z extensions.
+ *    name and _x,_y,_z and similiar extensions.
  *    This is meant to be used to build an array of components
  *    split with the exodus component naming convention.
- *
- * \todo
- *   - make this work with _c0, _c1 etc extensions
+ *    This function supports a few common naming extensions
+ *    (eg, xyz, xy, c0c1c2, tuvw) and tries a few spacing
+ *    options (eg, ending in _x, __x, or just x). 
  *
  * \modifications  
  *   - 10/12/2007 ACG created
+ *   - 12/11/2007 CDU added basic guessing logic that tries different names
+ *   - 12/12/2007 CDU Moved guessing logic to external function
  */
+
+
 FC_ReturnCode fc_getSeqVariableComponentsByName(
   FC_Mesh mesh,           /**< input - mesh handle */
   char *varname,          /**< input - variable name */
@@ -3425,13 +4526,20 @@ FC_ReturnCode fc_getSeqVariableComponentsByName(
 ) {  
   _FC_MeshSlot* meshSlot;
   FC_Variable** returnVars;
-  int numReturnVars;
-  int *nSteps;
-  char* compname;
 
-  char vector_endings[3][2] = { "x", "y", "z" };
-  int found[3];
-  int i, j;
+  int *nSteps;
+  char* compName;
+
+
+  int  j;
+  int numComp;
+  unsigned int lastCompInGuess;
+  unsigned int lastCompInSearch;
+  unsigned int maxExtLen;
+  unsigned int maxComp;
+  unsigned int varNameLen;
+  
+  unsigned int extState;
   FC_ReturnCode rc;
   
   // default values returned if anything goes wrong
@@ -3455,97 +4563,113 @@ FC_ReturnCode fc_getSeqVariableComponentsByName(
   // log message
   fc_printfLogMessage("Getting variable components '%s'", varname);
 
-  compname = (char*)malloc((strlen(varname)+3)*sizeof(char));
-  returnVars = (FC_Variable**)malloc(3*sizeof(FC_Variable*));
-  nSteps = (int*)malloc(3*sizeof(int));
-  if (!compname || !returnVars || ! nSteps){
-    return FC_MEMORY_ERROR;
+  //First, query component function to see what the guesses look like
+  rc = _fc_getNextComponentExtension(NULL, &maxExtLen, &maxComp, NULL);
+  if(rc!=FC_SUCCESS){
+    return rc;
   }
 
-  for (i = 0; i < 3; i++){
+
+  //Allocate working space for temporary data
+  compName   = (char *)        malloc(strlen(varname)+maxExtLen);
+  returnVars = (FC_Variable **)malloc(maxComp*sizeof(FC_Variable*));
+  nSteps     = (int *)         malloc(maxComp*sizeof(int));
+  if (!compName || !returnVars || ! nSteps){
+    free(compName); free(returnVars); free(nSteps);
+    return FC_MEMORY_ERROR;
+  }
+  varNameLen = strlen(varname);
+  strcpy(compName, varname); //search name always starts with varname
+  
+
+  //Keep asking for extensions until we run out of choices
+  for(numComp=0, extState=0, lastCompInGuess=0, lastCompInSearch=0; !lastCompInSearch; ){
     int numVar;
     int* numStep;
-    FC_Variable** tempVar;
+    FC_Variable** tempVar;     
 
-    found[i] = 0;
-    sprintf(compname, "%s_%s",varname,vector_endings[i]);
-    //    printf("looking for <%s>\n", compname);
-    rc = fc_getSeqVariableByName(mesh, compname,
-				 &numVar, &numStep, &tempVar);
-    if (rc != FC_SUCCESS){
-      free(compname);
-      for (j = 0; j < i; j++){
-	if (returnVars[j]) free(returnVars[j]);
-      }
-      free(nSteps);
-      free(returnVars);
+    rc = _fc_getNextComponentExtension(&extState,  
+				       &lastCompInGuess, &lastCompInSearch, 
+				       &compName[varNameLen]);
+    if(rc!=FC_SUCCESS){
+      free(compName); free(returnVars); free(nSteps);
+      return rc;
+    }
+    //printf("Checking '%s'\n",compName);
+    
+    //Search for this component
+    rc = fc_getSeqVariableByName(mesh, compName, &numVar, &numStep, &tempVar);
+    if(rc != FC_SUCCESS){
+      for (j = 0; j < numComp; j++)
+	free(returnVars[j]);	  
+      free(compName); free(nSteps); free(returnVars);
       return rc;
     }
 
     if (numVar > 1){
-      //      printf("found too many %d\n",i);
-      for (j = 0; j < numVar; j++){
-	free(tempVar[j]);
-      }
-      free(tempVar);
-      free(numStep);
-      free(compname);
-      for (j = 0; j < i; j++){
-	if (returnVars[j]) free(returnVars[j]);
-      }
-      free(returnVars);
-      free(nSteps);
+      //printf("found too many %d\n",i);
+      for (j = 0; j < numVar; j++)
+	free(tempVar[j]);	
+      free(tempVar);  free(numStep);
+      for (j = 0; j < numComp; j++)
+	free(returnVars[j]);      
+      free(compName); free(returnVars); free(nSteps);
       return FC_INPUT_ERROR;
+
     } else if (numVar == 1 ){
-      //      printf("found %d\n",i);
-      returnVars[i] = tempVar[0];
-      nSteps[i] = numStep[0];
-      found[i] = 1;
+      //printf("found %d\n",numComp);
+      returnVars[numComp] = tempVar[0];
+      nSteps[numComp] = numStep[0];
       free(tempVar);
       free(numStep);
-    } else {
-      //do nothing
-      //      printf("found none %d\n",i);
-    }
-  } //all components
+      numComp++;
 
-  free(compname);
-  //make sure no skips
-  for (i = 0; i < 2; i++){
-    if (found[i] == 0 && found[i+1] == 1){
-      for (j = 0; j < 3; j++){
-	if (returnVars[j]) free(returnVars[j]);
+      if(lastCompInGuess){
+	//We hit on all components, stop searching, trim data down to size
+	*variables =  (FC_Variable **)realloc(returnVars, numComp*sizeof(FC_Variable **));
+	*numStepsPerVariable = (int *)realloc(nSteps,     numComp*sizeof(int));
+	free(compName);
+	if(!(*variables)||!(*numStepsPerVariable)){
+	  if(!(*variables))           free(returnVars);
+	  else                        free(*variables);
+	  if(!(*numStepsPerVariable)) free(nSteps);
+	  else                        free(*numStepsPerVariable);
+	  return FC_MEMORY_ERROR;
+	}
+
+	*type = FC_MT_VECTOR;
+	*numVariables = numComp;
+	return FC_SUCCESS;
+
       }
-      free(returnVars);
-      free(nSteps);
-      return FC_INPUT_ERROR;
+
+    } else {
+      //Didn't find, bail out
+      for(j=0; j<numComp; j++)
+	free(returnVars[j]);
+      
+      //Skip through all of this row's remaining components
+      while(!lastCompInGuess){
+	rc = _fc_getNextComponentExtension(&extState, &lastCompInGuess, &lastCompInSearch, NULL);
+	if(rc!=FC_SUCCESS){
+	  free(compName); free(returnVars); free(nSteps);
+	  return rc;
+	}
+      }
+      numComp=0;
     }
+
+
   }
 
-  numReturnVars = 0;
-  for (i = 0; i < 3; i++){
-    numReturnVars+= found[i];
-  }
-
-  if (numReturnVars > 0){
-    *variables = (FC_Variable**)malloc(numReturnVars*sizeof(FC_Variable**));
-    *numStepsPerVariable = (int*)malloc(numReturnVars*sizeof(int));
-    if (!(*variables) || !(*numStepsPerVariable)){
-      return FC_MEMORY_ERROR;
-    }
-    for (i = 0; i < numReturnVars; i++){
-      (*variables)[i] = returnVars[i];
-      (*numStepsPerVariable)[i] = nSteps[i];
-    }
-    *type = FC_MT_VECTOR;
-  }
-  
-  *numVariables = numReturnVars;
-  free(returnVars);
-  free(nSteps);
-
+  //Ran through all guesses, but no matches
+  *numVariables = 0;
+  free(compName); free(returnVars); free(nSteps);
   return FC_SUCCESS;
+
 }
+
+
 
 
 
@@ -3801,7 +4925,7 @@ FC_ReturnCode fc_releaseVariable(
  */
 FC_ReturnCode fc_releaseSeqVariable(
   int numStep, /**< Input - Number of steps in the seq variable. */
-  FC_Variable* variables /**< Input - the steps of the seq variable. */
+  FC_Variable* variables /**< Input - the seq var. */
 ) {
   FC_ReturnCode rc, rc_keep = FC_SUCCESS;
   int i;  
@@ -5560,4 +6684,153 @@ void _fc_freeVarTable() {
   fc_freeSortedIntArray(&varOpenSlots);
   varTableSize = 0;
   varTable = NULL;
+}
+
+
+/**
+ * \ingroup  PrivateVariable
+ * \brief  Get a common component extension for combining vars
+ *
+ * \description
+ *
+ *    This function is used when searching for single-component
+ *    vars/seqVars that should be combined into a multicomponent
+ *    var/seqVar. This function holds a table of common extensions
+ *    and is designed to generate several permutations of 
+ *    the extension format to make guessing the component names
+ *    easier. A state variable is passed to the function in order
+ *    to keep track of where the search is. The idea is that a user
+ *    keeps calling this function until a good match is found or
+ *    the function runs out of guesses.
+ *
+ *    This function produces one component extension at a time,
+ *    sequentially (ie, for the first extension guess, it gives
+ *    _x, _y, and then _z). The lastCompInGuess variable indicates
+ *    that the result is the last component of a particular
+ *    extension. The lastCompInSearch indicates that the result
+ *    is the last component of the last possible guess.
+ *
+ *    The user can find out info about the guesses by passing 
+ *    NULL into state. In this case, lastCompInGuess returns the
+ *    maximum number of characters in an individual extension,
+ *    while lastCompInSearch returns the largest number of 
+ *    components a guess can have.
+ *
+ * \modifications  
+ *   - 12/12/2007 CDU Created.
+ */
+FC_ReturnCode _fc_getNextComponentExtension(
+  	               unsigned int *state,             /**< input - state information retained between calls */
+		       unsigned int *lastCompInGuess,   /**< output - flag indicating this is the last component of a guess */
+		       unsigned int *lastCompInSearch,  /**< output - flag indicating this is the last component of last guess */
+		       char         *extension          /**< input - pre-allocated array where extension is written */ 
+){
+
+
+
+  //Extension Table: If you want to add more extension labels to the below
+  //table, make sure you do the following:
+  // - Update num_rows to reflect number of different extension patterns
+  // - Update num_cols to reflect max number of components in a pattern
+  // - Update max_ext_len if your extension symbols become longer
+  // - Insert longer vectors first: Make sure tuvw comes before
+  //    tuv so longer number of components are found first
+  const unsigned int num_rows    = 6; //How many rows in table below
+  const unsigned int num_cols    = 4; //How many columns in table below
+  const unsigned int num_rounds  = 6; //All underline/capital letter cases
+  const unsigned int max_ext_len = 2+2+1; //underscores + extension + \0
+  
+  char *vector_endings[][4] = { {"x",  "y",  "z",  NULL },
+				{"x",  "y",  NULL, NULL },
+				{"c0", "c1", "c2", "c3" },
+				{"c0", "c1", "c2", NULL },
+				{"t",  "u",  "v",  "w"  },
+				{"t",  "u",  "v",  NULL } };
+  
+
+  char *underscore, *s;
+  int upper;
+  unsigned int round, row, col;
+
+
+  //Always must have at least these two return pointers
+  if((!lastCompInGuess)||(!lastCompInSearch)){
+    fc_printfErrorMessage("Null variable in input");
+    return FC_INPUT_ERROR;
+  }
+  
+  //When user passes NULL in for state, they're actually querying to
+  //see what the dimensions of the table are. Just pass these back
+  if(!state){
+    *lastCompInGuess  = max_ext_len;
+    *lastCompInSearch = num_cols;
+    return FC_SUCCESS;
+  }
+
+  //Unpack the state
+  col   = (*state>> 0) & 0x0FF;
+  row   = (*state>> 8) & 0x0FF;
+  round = (*state>>16) & 0x0FF;
+  
+  //printf("Working on round/row/col : %d/%d/%d\n", round, row, col);
+  
+  //Check bounds
+  if( (round >= num_rounds) || (row >= num_rows) || (col >= num_cols) || 
+      (!vector_endings[row][col])){
+    fc_printfErrorMessage("Input boundary check failure");
+    return FC_INPUT_ERROR;
+  }
+
+
+  //The user may not want to actually retrieve the extension. They may
+  //just be looping through the components in a row because one of the
+  //components wasn't found.
+  if(extension){
+
+    switch(round){
+    case 0: underscore="_";  upper=0; break;
+    case 1: underscore="_";  upper=1; break;
+    case 2: underscore="__"; upper=0; break;
+    case 3: underscore="__"; upper=1; break;
+    case 4: underscore="";   upper=1; break;
+    case 5: underscore="";   upper=0; break;
+    default:
+      fc_printfErrorMessage("Bad case statement?");
+      return FC_ERROR;
+    }
+    
+    snprintf(extension, max_ext_len, "%s%s",underscore,vector_endings[row][col]);
+    if(upper){ //Convert to uppercase
+      s=extension;
+      while(*s!='\0'){
+	*s = toupper(*s);
+	s++;
+      }
+    }
+  }
+
+  //Done with this entry: Update the state
+  col++;
+  *lastCompInGuess=0;
+  *lastCompInSearch=0;
+  if((col==num_cols) || (!vector_endings[row][col])){
+    //End of column
+    *lastCompInGuess=1;
+    col=0;
+    row++;
+    if(row==num_rows){
+      //End of rows
+      row=0;
+      round++;
+      if(round==num_rounds){
+	//End of search
+	*lastCompInSearch=1;
+      }
+    }
+  }
+
+  //Pack the state again
+  *state = (round<<16) | (row<<8) | (col);
+
+  return FC_SUCCESS;
 }

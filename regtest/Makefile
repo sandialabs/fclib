@@ -342,6 +342,39 @@ runtests : $(TEST_EXES) $(TOOLS_FOR_TESTS)
 	../tools/fcswapAssoc -d v2e -r _mod -o swapAssoc2.ex2 ../data/gen_multivar_seq.ex2
 	../tools/fcdump swapAssoc2.ex2
 	../tools/varStats swapAssoc2.ex2 "vertex ids_mod"
+	echo "Testing subsetter ..."
+	../tools/subsetter -M -a ../data/gen_hex.ex2 "temperature" ">" 80 1
+	../tools/fcdump subsetter_geomonly.ex2
+	../tools/fcdump subsetter_subsets.ex2
+	../tools/varStats subsetter_subsets.ex2 "temperature"
+	../tools/varStats subsetter_subsets.ex2 "FC_ELEMENTMAP"
+	../tools/varStats subsetter_subsets.ex2 "FC_VERTEXMAP"
+	rm -f subsetter_geomonly.ex2
+	rm -f subsetter_subsets.ex2
+	../tools/subsetter -a ../data/gen_hex.ex2 "temperature" ">" 80 1
+	../tools/fcdump subsetter_subsets.ex2
+	rm -f subsetter_subsets.ex2
+	../tools/subsetter -a ../data/gen_multivar_seq.ex2 "temperature per vertex" ">" 300 1
+	../tools/fcdump subsetter_subsets.ex2
+	rm -f subsetter_subsets.ex2
+	echo "Testing subsetter and regionreassembler pair"
+	rm -f subsetter_subsets.ex2
+	../tools/subsetter -M -a ../data/gen_multivar_seq.ex2 "temperature per vertex" ">" 300 1
+	../tools/fcdump subsetter_geomonly.ex2
+	../tools/fcdump subsetter_subsets.ex2
+	../tools/varStats subsetter_subsets.ex2 "temperature per vertex"
+	../tools/varStats subsetter_subsets.ex2 "FC_ELEMENTMAP"
+	../tools/varStats subsetter_subsets.ex2 "FC_VERTEXMAP"
+	../tools/varStats subsetter_subsets.ex2 "element ids"
+	../tools/varStats subsetter_subsets.ex2 "vertex ids"
+	../tools/regionreassembler subsetter_geomonly.ex2 subsetter_subsets.ex2
+	../tools/fcdump reassembled.ex2
+	../tools/varStats subsetter_subsets.ex2 "temperature per vertex"
+	../tools/varStats subsetter_subsets.ex2 "element ids"
+	../tools/varStats subsetter_subsets.ex2 "vertex ids"
+	rm -f subsetter_geomonly.ex2
+	rm -f subsetter_subsets.ex2
+	rm -f reassembled.ex2
 	echo "Finished regresion tests"
 
 # These are tests that depend on data in fclib-data module

@@ -83,7 +83,7 @@
  *     - Dataset
  *     - Sequence
  *     - Mesh
- *     - Subset
+ *     - Subset & Sequence Subset
  *     - Variable & Sequence Variable 
  *
  *    The data interface routines allow the calling code to get, query, copy,
@@ -102,7 +102,8 @@
  *    associated with some subentity of a mesh such as vertices or
  *    elements. A sequence variable is actually an array of variable handles
  *    associated with a sequence, with one variable per step of the
- *    sequence.
+ *    sequence. Similiarly, a sequence subset is an array of subset handles
+ *    associated with a sequence, with one subset per step of the sequence.
  *
  *    It is very important to note that the library makes a distinction
  *    between meta data and "big data", and that access to these is treated

@@ -993,6 +993,16 @@ START_TEST(copy_test)
   FC_ElementType temp_elemType;
   double *temp_coords;
   int *temp_conns;
+
+  FC_Coords lowers = { 0., 0., 0. };
+  FC_Coords uppers = { 1., 1., 1. };
+  FC_DataType returndatatype;
+  FC_Sequence seq, retseq1, retseq2;
+  FC_Variable var, *seqvar1, *seqvar2, globalvar, *globalseqvar, **returnseqvars; 
+  FC_Subset sub, *seqsub, **returnseqsubs;
+  int *data;
+  int numStep, numMembers, numVar;
+  int numreturn, *numstepperseq;
   
   // make two datasets to play in
   rc = fc_createDataset("temp dataset1", &dataset1);
@@ -1022,7 +1032,7 @@ START_TEST(copy_test)
       numMesh1++;
 
       // fc_copyMesh() to same dataset & check it
-      rc = fc_copyMesh(mesh, dataset1, copy_name, &copy_mesh);
+      rc = fc_copyMesh(mesh, dataset1, copy_name, 1, 1, 1, 1, &copy_mesh);
       fail_unless(rc == FC_SUCCESS, "failed to copy to same dataset");
       numMesh1++;
       rc = fc_getMeshName(copy_mesh, &temp_name);
@@ -1049,7 +1059,7 @@ START_TEST(copy_test)
 		  numElem*numVertPerElem[i]*sizeof(int)), "mismatch of conns");
 
       // fc_copyMesh() to same different dataset & check it
-      rc = fc_copyMesh(mesh, dataset2, copy_name, &copy_mesh);
+      rc = fc_copyMesh(mesh, dataset2, copy_name, 1, 1, 1, 1, &copy_mesh);
       fail_unless(rc == FC_SUCCESS, "failed to copy to same dataset");
       numMesh2++;
       rc = fc_getMeshName(copy_mesh, &temp_name);
@@ -1078,7 +1088,7 @@ START_TEST(copy_test)
       // --- special cases
       
       // copy with NULL name will use original's name
-      rc = fc_copyMesh(mesh, dataset1, NULL, &copy_mesh);
+      rc = fc_copyMesh(mesh, dataset1, NULL, 1, 1, 1, 1, &copy_mesh);
       fail_unless(rc == FC_SUCCESS, "should fail to copy bad mesh");
       rc = fc_getMeshName(copy_mesh, &temp_name);
       fail_unless(rc == FC_SUCCESS, "failed to get name of copy");
@@ -1090,15 +1100,17 @@ START_TEST(copy_test)
       // ---- check errors
       
       // fc_copyMesh() -- bad args
-      rc = fc_copyMesh(badMesh, dataset1, copy_name, &copy_mesh);
+      rc = fc_copyMesh(badMesh, dataset1, copy_name, 1, 1, 1, 1,
+		       &copy_mesh);
       fail_unless(rc != FC_SUCCESS, "should fail to copy bad mesh");
       fail_unless(FC_HANDLE_EQUIV(copy_mesh, FC_NULL_MESH),
 		  "fail should return NULL");
-      rc = fc_copyMesh(mesh, FC_NULL_DATASET, copy_name, &copy_mesh);
+      rc = fc_copyMesh(mesh, FC_NULL_DATASET, copy_name, 1, 1, 1, 1, 
+		       &copy_mesh);
       fail_unless(rc != FC_SUCCESS, "should fail to copy to bad dataset");
       fail_unless(FC_HANDLE_EQUIV(copy_mesh, FC_NULL_MESH),
 		  "fail should return NULL");
-      rc = fc_copyMesh(mesh, dataset1, copy_name, NULL);
+      rc = fc_copyMesh(mesh, dataset1, copy_name, 1, 1, 1, 1, NULL);
       fail_unless(rc != FC_SUCCESS, "should fail to copy if NULL handle");
     }
   }
@@ -1115,6 +1127,283 @@ START_TEST(copy_test)
 
   // delete the dataset
   rc = fc_deleteDataset(dataset1);
+  fail_unless(rc == FC_SUCCESS, "failed to delete dataset");
+
+  //----- now check the flags but only on a hex mesh-----
+  //since these are simple copy calls for each type, make this as simple as possible
+  rc = fc_createDataset("dataset1", &dataset1);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create dataset");
+  rc = fc_createDataset("dataset2", &dataset2);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create dataset");
+
+  rc = fc_createSimpleHexMesh(dataset1, "hex mesh", 3, 3, 3, lowers, uppers, &mesh);
+  fail_unless(rc == FC_SUCCESS, "failed to create mesh");
+  rc = fc_getMeshInfo(mesh, &temp_topoDim, &temp_dim, &temp_numVert, &temp_numElem, &temp_elemType);
+  fail_unless(rc == FC_SUCCESS, "failed to get mesh info");
+
+  //give it some var and subsets
+  rc = fc_createVariable(mesh, "var", &var);
+  fail_unless(rc == FC_SUCCESS, "failed to create var");
+  rc = fc_createGlobalVariable(dataset1, "global var", &globalvar);
+  fail_unless(rc == FC_SUCCESS, "failed to create global var");
+  data = (int*)malloc(temp_numElem*sizeof(int));
+  for (i = 0; i < temp_numElem; i++)
+    data[i] = i;
+  rc = fc_setVariableData(var, temp_numElem, 1, FC_AT_ELEMENT, FC_MT_SCALAR,
+			  FC_DT_INT, (void*)data);
+  fail_unless(rc == FC_SUCCESS, "failed to set variable data");
+  rc = fc_setVariableData(globalvar, 1, 1, FC_AT_WHOLE_DATASET, FC_MT_SCALAR,
+			  FC_DT_INT, (void*)data);
+  fail_unless(rc == FC_SUCCESS, "failed to set glb variable data");
+  free(data);
+
+  numStep = 3;
+  rc = fc_createSequence(dataset1, "seq", &seq);
+  fail_unless(rc == FC_SUCCESS, "failed to create seq");
+  data = (int*)malloc(numStep*sizeof(int));
+  for (i = 0; i < numStep; i++)
+    data[i] = i;
+  rc = fc_setSequenceCoords(seq, numStep, FC_DT_INT, (void*)(data));
+  fail_unless(rc == FC_SUCCESS, "failed to set seq coords");
+  free(data);
+  rc = fc_createSeqVariable(mesh, seq, "seqvar1", &numStep, &seqvar1);
+  fail_unless(rc == FC_SUCCESS, "failed to create seqvar");
+  rc = fc_createSeqVariable(mesh, seq, "seqvar2", &numStep, &seqvar2);
+  fail_unless(rc == FC_SUCCESS, "failed to create seqvar");
+  rc = fc_createGlobalSeqVariable(dataset1, seq, "global seqvar", &numStep, &globalseqvar);
+  fail_unless(rc == FC_SUCCESS, "failed to create seqvar");
+  data = (int*)malloc(temp_numVert*sizeof(int));
+  for (i = 0; i < temp_numVert; i++)
+    data[i] = i;
+  for (i = 0; i < numStep; i++){
+    rc = fc_setVariableData(seqvar1[i], temp_numVert, 1, FC_AT_VERTEX,
+			    FC_MT_SCALAR, FC_DT_INT, (void*)data);
+    fail_unless(rc == FC_SUCCESS, "failed to set var data");
+    rc = fc_setVariableData(seqvar2[i], temp_numVert, 1, FC_AT_VERTEX,
+			    FC_MT_SCALAR, FC_DT_INT, (void*)data);
+    fail_unless(rc == FC_SUCCESS, "failed to set var data");
+    rc = fc_setVariableData(globalseqvar[i], 1, 1, FC_AT_WHOLE_DATASET,
+			    FC_MT_SCALAR, FC_DT_INT, (void*)data);
+    fail_unless(rc == FC_SUCCESS, "failed to set var data");
+  }
+  free(data);
+
+  numMembers = 2;
+  rc = fc_createSubset(mesh, "sub", FC_AT_ELEMENT, &sub);
+  fail_unless(rc == FC_SUCCESS, "failed to create Subset");
+  for (i = 0; i < numMembers; i++){
+    rc = fc_addMemberToSubset(sub,i);
+    fail_unless(rc == FC_SUCCESS, "failed to add member to subset");
+  }
+  rc = fc_createSeqSubset(mesh, seq, "seqsub", FC_AT_VERTEX, &numStep, &seqsub);
+  fail_unless(rc == FC_SUCCESS, "failed to create seq Subset");
+  for (i = 0; i < numStep; i++){
+    for (j = 0; j < numMembers; j++){
+    rc = fc_addMemberToSubset(seqsub[i],j);
+    fail_unless(rc == FC_SUCCESS, "failed to add member to subset");
+    }
+  }
+
+  // try these in 3 separate calls (geom only and 2 pair)
+  // geom copy tested above
+  rc = fc_copyMesh(mesh, dataset2, "new mesh", 0, 0, 0, 0, &copy_mesh);
+  fail_unless(rc == FC_SUCCESS, "cannot copy mesh");
+  rc = fc_getMeshName(copy_mesh, &temp_name);
+  fail_unless(rc == FC_SUCCESS, "failed to get name of copy");
+  fail_unless(!strcmp(temp_name, "new mesh"), "mismatch of name");
+  free(temp_name);
+
+  rc = fc_getNumGlobalVariable(dataset2, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num global var");
+  fail_unless(numVar == 0, "wrong num global vars");
+  rc = fc_getNumGlobalSeqVariable(dataset2, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num global seqvar");
+  fail_unless(numVar == 0, "wrong num global seq vars");
+  rc = fc_getNumVariable(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num var");
+  fail_unless(numVar == 0, "wrong num vars");
+  rc = fc_getNumSeqVariable(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num seqvar");
+  fail_unless(numVar == 0, "wrong num seq vars");
+  rc = fc_getNumSubset(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num subset");
+  fail_unless(numVar == 0, "wrong num subsets");
+  rc = fc_getNumSeqSubset(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num seq subs");
+  fail_unless(numVar == 0, "wrong num seq subs");
+  fc_deleteMesh(copy_mesh);
+
+  //just check numbers not vals, since for simple cases, it is a simple copy
+  rc = fc_copyMesh(mesh, dataset2, "new mesh", 1, 0, 1, 0, &copy_mesh);
+  fail_unless(rc == FC_SUCCESS, "cannot copy mesh");
+  rc = fc_getMeshName(copy_mesh, &temp_name);
+  fail_unless(rc == FC_SUCCESS, "failed to get name of copy");
+  fail_unless(!strcmp(temp_name, "new mesh"), "mismatch of name");
+  free(temp_name);
+
+  rc = fc_getNumGlobalVariable(dataset2, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num global var");
+  fail_unless(numVar == 0, "wrong num global vars");
+  rc = fc_getNumGlobalSeqVariable(dataset2, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num global seqvar");
+  fail_unless(numVar == 0, "wrong num global seq vars");
+  rc = fc_getNumVariable(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num var");
+  fail_unless(numVar == 1, "wrong num vars");
+  rc = fc_getNumSeqVariable(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num seqvar");
+  fail_unless(numVar == 0, "wrong num seq vars");
+  rc = fc_getNumSubset(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num subset");
+  fail_unless(numVar == 1, "wrong num subsets");
+  rc = fc_getNumSeqSubset(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num seq subs");
+  fail_unless(numVar == 0, "wrong num seq subs");
+  fc_deleteMesh(copy_mesh);
+
+  //for sequence cases test the sequences and that the vars and subsets
+  //are on a matching sequence
+  rc = fc_copyMesh(mesh, dataset2, "new mesh", 0, 1, 0, 1, &copy_mesh);
+  fail_unless(rc == FC_SUCCESS, "cannot copy mesh");
+  rc = fc_getMeshName(copy_mesh, &temp_name);
+  fail_unless(rc == FC_SUCCESS, "failed to get name of copy");
+  fail_unless(!strcmp(temp_name, "new mesh"), "mismatch of name");
+  free(temp_name);
+
+  rc = fc_getNumGlobalVariable(dataset2, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num global var");
+  fail_unless(numVar == 0, "wrong num global vars");
+  rc = fc_getNumGlobalSeqVariable(dataset2, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num global seqvar");
+  fail_unless(numVar == 0, "wrong num global seq vars");
+  rc = fc_getNumVariable(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num var");
+  fail_unless(numVar == 0, "wrong num vars");
+  rc = fc_getNumSeqVariable(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num seqvar");
+  fail_unless(numVar == 2, "wrong num seq vars");
+  rc = fc_getSeqVariableByName(copy_mesh, "seqvar1", &numreturn,
+				    &numstepperseq, &returnseqvars);
+  fail_unless(rc == FC_SUCCESS, "can't get seq var by name");
+  fail_unless(numreturn == 1, "wrong num matching var");
+  rc = fc_getSequenceFromSeqVariable(numStep, returnseqvars[0], &retseq1);
+  fail_unless(rc == FC_SUCCESS, "cant get seq");
+  free(numstepperseq);
+  free(returnseqvars[0]);
+  free(returnseqvars);
+  rc = fc_getSeqVariableByName(copy_mesh, "seqvar2", &numreturn,
+				    &numstepperseq, &returnseqvars);
+  fail_unless(rc == FC_SUCCESS, "can't get seq var by name");
+  fail_unless(numreturn == 1, "wrong num matching var");
+  rc = fc_getSequenceFromSeqVariable(numStep, returnseqvars[0], &retseq2);
+  fail_unless(rc == FC_SUCCESS, "cant get seq");
+  free(numstepperseq);
+  free(returnseqvars[0]);
+  free(returnseqvars);
+  fail_unless(FC_HANDLE_EQUIV(retseq1, retseq2), "wrong ret seqs");
+  rc = fc_getSequenceInfo(retseq1,&numreturn, &returndatatype);
+  fail_unless(rc == FC_SUCCESS, "cant get seq info");
+  fail_unless(returndatatype == FC_DT_INT, "wrong data type");
+  fail_unless(numreturn == numStep, "wrong num step");
+  //check known seq vals
+  rc = fc_getSequenceCoordsPtr(retseq1, (void*) &data);
+  fail_unless(rc == FC_SUCCESS, "can get seq coords");
+  for (i = 0; i < numStep; i++){
+    fail_unless(((int*)(data))[i] == i , "wrong data val");
+  }
+  rc = fc_getNumSubset(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num subset");
+  fail_unless(numVar == 0, "wrong num subsets");
+  rc = fc_getNumSeqSubset(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num seq subs");
+  fail_unless(numVar == 1, "wrong num seq subs");
+  rc = fc_getSeqSubsetByName(copy_mesh, "seqsub", &numreturn,
+				    &numstepperseq, &returnseqsubs);
+  fail_unless(rc == FC_SUCCESS, "can't get seq sub by name");
+  fail_unless(numreturn == 1, "wrong num matching seq sub");
+  rc = fc_getSequenceFromSeqSubset(numStep, returnseqsubs[0], &retseq1);
+  fail_unless(rc == FC_SUCCESS, "cant get seq");
+  free(numstepperseq);
+  free(returnseqsubs[0]);
+  free(returnseqsubs);
+  rc = fc_getSequenceInfo(retseq1,&numreturn, &returndatatype);
+  fail_unless(rc == FC_SUCCESS, "cant get seq info");
+  fail_unless(returndatatype == FC_DT_INT, "wrong data type");
+  fail_unless(numreturn == numStep, "wrong num step");
+  //check known seq vals
+  rc = fc_getSequenceCoordsPtr(retseq1, (void*) &data);
+  fail_unless(rc == FC_SUCCESS, "can get seq coords");
+  for (i = 0; i < numStep; i++){
+    fail_unless(((int*)(data))[i] == i , "wrong data val");
+  }
+  fc_deleteMesh(copy_mesh);
+
+  //one last test to same dataset - just make sure dont recopy seq
+  rc = fc_copyMesh(mesh, dataset1, "copy mesh", 1, 1, 1, 1, &copy_mesh);
+  fail_unless(rc == FC_SUCCESS, "cannot copy mesh");
+  rc = fc_getMeshName(copy_mesh, &temp_name);
+  fail_unless(rc == FC_SUCCESS, "failed to get name of copy");
+  fail_unless(!strcmp(temp_name, "copy mesh"), "mismatch of name");
+  free(temp_name);
+
+  rc = fc_getNumGlobalVariable(dataset1, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num global var");
+  fail_unless(numVar == 1, "wrong num global vars");
+  rc = fc_getNumGlobalSeqVariable(dataset1, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num global seqvar");
+  fail_unless(numVar == 1, "wrong num global seq vars");
+  rc = fc_getNumVariable(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num var");
+  fail_unless(numVar == 1, "wrong num vars");
+  rc = fc_getNumSeqVariable(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num seqvar");
+  fail_unless(numVar == 2, "wrong num seq vars");
+  rc = fc_getNumSubset(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num subset");
+  fail_unless(numVar == 1, "wrong num subsets");
+  rc = fc_getNumSeqSubset(copy_mesh, &numVar);
+  fail_unless(rc == FC_SUCCESS, "failed to get num seq subs");
+  fail_unless(numVar == 1, "wrong num seq subs");
+  rc = fc_getNumSequence(dataset1, &numVar);
+  fail_unless(rc == FC_SUCCESS, "can't get num seq"); 
+  fail_unless(numVar == 1, "wrong num seq");
+  fc_deleteMesh(copy_mesh);
+
+
+  //bad args - only the flags
+  rc = fc_copyMesh(mesh, dataset1, "new_mesh", -1, 1, 1, 1, &copy_mesh);
+  fail_unless(rc != FC_SUCCESS, "Should fail for bad flag");
+  fail_unless(FC_HANDLE_EQUIV(copy_mesh, FC_NULL_MESH),"bad arg should return null mesh");
+  rc = fc_copyMesh(mesh, dataset1, "new_mesh", 2, 1, 1, 1, &copy_mesh);
+  fail_unless(rc != FC_SUCCESS, "Should fail for bad flag");
+  fail_unless(FC_HANDLE_EQUIV(copy_mesh, FC_NULL_MESH),"bad arg should return null mesh");
+  rc = fc_copyMesh(mesh, dataset1, "new_mesh", 0, -1, 0, 0, &copy_mesh);
+  fail_unless(rc != FC_SUCCESS, "Should fail for bad flag");
+  fail_unless(FC_HANDLE_EQUIV(copy_mesh, FC_NULL_MESH),"bad arg should return null mesh");
+  rc = fc_copyMesh(mesh, dataset1, "new_mesh", 0, 2, 0, 0, &copy_mesh);
+  fail_unless(rc != FC_SUCCESS, "Should fail for bad flag");
+  fail_unless(FC_HANDLE_EQUIV(copy_mesh, FC_NULL_MESH),"bad arg should return null mesh");
+  rc = fc_copyMesh(mesh, dataset1, "new_mesh", 0, 0, -1, 0, &copy_mesh);
+  fail_unless(rc != FC_SUCCESS, "Should fail for bad flag");
+  fail_unless(FC_HANDLE_EQUIV(copy_mesh, FC_NULL_MESH),"bad arg should return null mesh");
+  rc = fc_copyMesh(mesh, dataset1, "new_mesh", 0, 0, 2, 0, &copy_mesh);
+  fail_unless(rc != FC_SUCCESS, "Should fail for bad flag");
+  fail_unless(FC_HANDLE_EQUIV(copy_mesh, FC_NULL_MESH),"bad arg should return null mesh");
+  rc = fc_copyMesh(mesh, dataset1, "new_mesh", 0, 0, 0, -1, &copy_mesh);
+  fail_unless(rc != FC_SUCCESS, "Should fail for bad flag");
+  fail_unless(FC_HANDLE_EQUIV(copy_mesh, FC_NULL_MESH),"bad arg should return null mesh");
+  rc = fc_copyMesh(mesh, dataset1, "new_mesh", 0, 0, 0, 2, &copy_mesh);
+  fail_unless(rc != FC_SUCCESS, "Should fail for bad flag");
+  fail_unless(FC_HANDLE_EQUIV(copy_mesh, FC_NULL_MESH),"bad arg should return null mesh");
+
+  // clean up
+  free(seqsub);
+  free(seqvar1);
+  free(seqvar2);
+  free(globalseqvar);
+  rc = fc_deleteDataset(dataset1);
+  fail_unless(rc == FC_SUCCESS, "failed to delete dataset at end of test");
+  rc = fc_deleteDataset(dataset2);
   fail_unless(rc == FC_SUCCESS, "failed to delete dataset at end of test");
 }
 END_TEST
@@ -1193,7 +1482,7 @@ START_TEST(release_mesh)
 	      "coords & conns should now be null"); 
 
   // --- make copy (uncommitted) mesh
-  rc = fc_copyMesh(mesh1, dataset, "new_mesh", &mesh2);
+  rc = fc_copyMesh(mesh1, dataset, "new_mesh", 1, 1, 1, 1, &mesh2);
   fail_unless(rc == FC_SUCCESS, "failed to copy mesh");
   meshSlot2 = _fc_getMeshSlot(mesh2);
 
@@ -1211,7 +1500,7 @@ START_TEST(release_mesh)
   // Behavior should be the same on committed or uncommitted mesh
   for (i = 0; i < 2; i++) { // committed or uncommitted
     FC_Mesh mesh;
-    FC_Subset edgeSubset, faceSubset;
+    FC_Subset edgeSubset, faceSubset, *edgeSeqSub, *faceSeqSub;
     FC_Variable edgeVar, *edgeSeqVar, faceVar, *faceSeqVar;
     int numEdge, numFace, *edgeData, *faceData;
     int temp_int, *temp_int_p, **temp_int_p_p;
@@ -1305,6 +1594,64 @@ START_TEST(release_mesh)
     
     // delete all remaining subsets before going on
     fc_deleteSubset(edgeSubset);
+
+    // --- check release w/ various combinations of seq subsets
+    
+    // create edge & face seq subsets
+    fc_createSeqSubset(mesh, sequence, "temp subset", FC_AT_EDGE, &numStep, &edgeSeqSub);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to create edge seq subset");
+    fc_createSeqSubset(mesh, sequence, "temp subset", FC_AT_FACE, &numStep, &faceSeqSub);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to create face seq variable");
+
+    // Have both subsets, everything should exist
+    rc = fc_releaseMesh(mesh);
+    fail_unless(rc == FC_SUCCESS, "failed to release data");
+    fail_unless(meshSlot->numEdge > -1, "numEdge should be > -1");
+    fail_unless(meshSlot->edgeToVertConns != NULL, "should have edge conns");
+    fail_unless(meshSlot->elemToEdgeConns != NULL, "should have elemToEdgeConns");
+    fail_unless(meshSlot->numFace > -1, "numFace should be > -1");
+    fail_unless(meshSlot->faceTypes != NULL, "should have facetypes");
+    fail_unless(meshSlot->numVertPerFace != NULL, "should have numVertPerFace");
+    fail_unless(meshSlot->faceToVertConns != NULL, "should have face conns");
+    fail_unless(meshSlot->elemToFaceConns != NULL, "should have elemToFaceConns");
+    fail_unless(meshSlot->elemFaceOrients != NULL, "should have elemFaceOrients");
+    
+    // delete just the edge subset & release
+    // egde stuff should go away but face stuff stays
+    fc_deleteSeqSubset(numStep,edgeSeqSub);
+    free(edgeSeqSub);
+    rc = fc_releaseMesh(mesh);
+    fail_unless(rc == FC_SUCCESS, "failed to release data");
+    fail_unless(meshSlot->numEdge == -1, "should have numEdge = -1");
+    fail_unless(meshSlot->edgeToVertConns == NULL, "should have no edge conns");
+    fail_unless(meshSlot->elemToEdgeConns == NULL, "should have no elemToEdgeConns");
+    fail_unless(meshSlot->numFace > -1, "numFace should be > -1");
+    fail_unless(meshSlot->faceTypes != NULL, "should have facetypes");
+    fail_unless(meshSlot->numVertPerFace != NULL, "should have numVertPerFace");
+    fail_unless(meshSlot->faceToVertConns != NULL, "should have face conns");
+    fail_unless(meshSlot->elemToFaceConns != NULL, "should have elemToFaceConns");
+    fail_unless(meshSlot->elemFaceOrients != NULL, "should have elemFaceOrients");
+    
+    // recreate edge subset,delete face subset & release
+    // face stuff should go away but edge stuff stays
+    fc_createSeqSubset(mesh, sequence, "temp subset", FC_AT_EDGE, &numStep, &edgeSeqSub);
+    fc_deleteSeqSubset(numStep,faceSeqSub);
+    free(faceSeqSub);
+    rc = fc_releaseMesh(mesh);
+    fail_unless(rc == FC_SUCCESS, "failed to release data");
+    fail_unless(meshSlot->numEdge > -1, "numEdge should be > -1");
+    fail_unless(meshSlot->edgeToVertConns != NULL, "should have edge conns");
+    fail_unless(meshSlot->elemToEdgeConns != NULL, "should have elemToEdgeConns");
+    fail_unless(meshSlot->numFace == -1, "should have numFace = -1");
+    fail_unless(meshSlot->faceTypes == NULL, "should have no facetypes");
+    fail_unless(meshSlot->numVertPerFace == NULL, "should have no numVertPerFace");
+    fail_unless(meshSlot->faceToVertConns == NULL, "should have no face conns");
+    fail_unless(meshSlot->elemToFaceConns == NULL, "should have no elemToFaceConns");
+    fail_unless(meshSlot->elemFaceOrients == NULL, "should have no elemFaceOrients");
+    
+    // delete all remaining subsets before going on
+    fc_deleteSeqSubset(numStep,edgeSeqSub);
+    free(edgeSeqSub);
     
     // --- setup some data for vars
 
@@ -1625,7 +1972,7 @@ START_TEST(coords_as_var)
 		  numVertPerType[i]*sizeof(double)), "mismatch of coords");
 
       // copy the entire mesh w/ the coords variable
-      rc = fc_copyMesh(mesh, dataset, "new mesh", &mesh2);
+      rc = fc_copyMesh(mesh, dataset, "new mesh", 1, 1, 1, 1, &mesh2);
       fail_unless(rc == FC_SUCCESS, "failed to copy mesh");
       fc_getVariables(mesh2, &numVar, &variables);
       fail_unless(numVar == 1, "should have the coords var");
@@ -1699,9 +2046,10 @@ START_TEST(create_subset_mesh)
 			     { 0, 11 } };
   double coords[3*12], *temp_coords;
   FC_Sequence sequence, *temp_sequences;
-  int temp_numSequence, numStep = 7, temp_numStep, temp_numSeqVar;
-  int *temp_numStepPerVar;
+  int temp_numSequence, numStep = 7, temp_numStep, temp_numSeqVar, temp_numSeqSub;
+  int *temp_numStepPerVar, *temp_numStepPerSub;
   FC_Variable *seqVars[6], **temp_seqVars;
+  FC_Subset *seqSubs[7], **temp_seqSubs;
   FC_DataType seq_dataType = FC_DT_FLOAT;
   float seq_coords[7] = { .11, .22, .33, .44, .55, .66, .77 };
   // index by type, then new vertID - gets old vertID
@@ -1810,6 +2158,33 @@ START_TEST(create_subset_mesh)
 	fail_unless(numSubset == 5+topoDimPerType[i]-1, 
 		    "abort: didn't create expected number of subsets");
 
+      // create seq subsets that are essentially copies of subsets
+      for (k = 0; k < numSubset; k++) {
+	char *sub_name;
+	FC_AssociationType sub_assoc;
+	int numMember,*memberIDs;
+
+	// get info & data from basic subset
+	rc = fc_getSubsetAssociationType(subsets[k], &sub_assoc);
+	fail_unless(rc == FC_SUCCESS, "abort: failed to get subset assoc type");
+	rc = fc_getSubsetName(subsets[k], &sub_name);
+	fail_unless(rc == FC_SUCCESS, "abort: failed to get subset name");
+	rc = fc_createSeqSubset(mesh, sequence, sub_name, sub_assoc,
+				&temp_numStep,&seqSubs[k]);
+	fail_unless(rc == FC_SUCCESS, "abort: failed to create seq subset");
+	fail_unless(temp_numStep == numStep, "abort: mimsatch in numStep"); 
+	free(sub_name);
+	rc = fc_getSubsetMembersAsArray(subsets[k], &numMember, &memberIDs);
+	fail_unless(temp_numStep == numStep, "abort: failed to get subset members"); 
+	// write each step
+	for (m = 0; m < numStep; m++) {
+	  rc = fc_addArrayMembersToSubset(seqSubs[k][m], numMember, memberIDs);
+	  fail_unless(rc == FC_SUCCESS, "abort: failed to add members to subset");
+	}
+	if (memberIDs) free (memberIDs);
+	free(seqSubs[k]);
+      }
+
       // create some variables
       // 0) coords as variable
       // 1) copy of coords
@@ -1875,15 +2250,18 @@ START_TEST(create_subset_mesh)
       for (k = 0; k < numSubset; k++) { // loop over subsets	
 	for (m = 0; m < 2; m++) { // loop over strictness options
 	  for (n = 0; n < 2; n++) { // loop over datasets (same or different)
-	    //printf("i = %d, j=%d, k = %d, m = %d, n=%d\n", i,j,k,m, n);
+	    //printf("type = %d, j=%d, subset = %d, strictness = %d, dataset=%d\n", i,j,k,m,n);
+	    FC_Variable elemmap, vertmap;
 	    rc = fc_createSubsetMesh(subsets[k], datasets[n], m, 
-				     subset_mesh_name, &subset_mesh);
+				     1, 1, 1, 1,
+				     subset_mesh_name, &subset_mesh,
+				     &vertmap, &elemmap);
 	    fail_unless(rc == FC_SUCCESS, "failed to create subset mesh");
 	    
 	    // we set things up so only 3 possible outcomes
 	    // 1) subsetting returns empty mesh
 	    // 2) subsetting returns the entire mesh
-	    // 3) sbusetting returns just the 2nd element
+	    // 3) subsetting returns just the 2nd element
 
 	    // testing involves querying the created mesh, it's subset
 	    //   and it's variables for the different cases
@@ -1894,8 +2272,14 @@ START_TEST(create_subset_mesh)
 
 	    // empty mesh
 	    if (k == 0 || (i != 0 && k == 1 && m == 1)) { // empty mesh
-	      fail_unless(FC_HANDLE_EQUIV(subset_mesh, FC_NULL_SUBSET),
+	      fail_unless(FC_HANDLE_EQUIV(subset_mesh, FC_NULL_MESH),
 			  "empty subset should return a NULL handle");
+	      fail_unless(FC_HANDLE_EQUIV(vertmap, FC_NULL_VARIABLE),
+			  "empty subset should return a NULL vertmap variable");
+	      fail_unless(FC_HANDLE_EQUIV(elemmap, FC_NULL_VARIABLE),
+			  "empty subset should return a NULL elemmap variable");
+	      fc_deleteVariable(vertmap);
+	      fc_deleteVariable(elemmap);
 	      continue;
 	    }
 	    
@@ -1920,7 +2304,56 @@ START_TEST(create_subset_mesh)
 	      fail_unless(!memcmp(temp_conns, conns[i],
 				  sizeof(int)*numElem*numVertPerElem[i]),
 			  "mismatch of conns");
-	      
+
+	      {
+		char* name_orig;
+		int numDP_orig, numComp_orig;
+		FC_AssociationType assoc_orig;
+		FC_MathType mathType_orig;
+		FC_DataType dataType_orig;
+		int* data_orig;
+
+		fail_unless(!FC_HANDLE_EQUIV(elemmap,FC_NULL_VARIABLE),
+			    "elemmap should not be null");
+		fc_getVariableName(elemmap, &name_orig);
+		fail_unless(strcmp(name_orig,"FC_ELEMENTMAP") == 0,
+			    "mismatch of name");
+		free(name_orig);
+		fc_getVariableInfo(elemmap, &numDP_orig, &numComp_orig,
+				   &assoc_orig, &mathType_orig,
+				   &dataType_orig);
+		fail_unless(dataType_orig == FC_DT_INT, "elemmap should be int");
+		fail_unless(mathType_orig == FC_MT_SCALAR, "elemmap should be scalar");
+		fail_unless(assoc_orig == FC_AT_ELEMENT, "elemmap should be at elem");
+		fail_unless(numComp_orig == 1, "elemmap should have 1 component");
+		fail_unless(numDP_orig == temp_numElement, "mismatch of num datapoint");
+		fc_getVariableDataPtr(elemmap, (void*)&data_orig);
+		for (p = 0; p < temp_numElement; p++){
+		  fail_unless(data_orig[p] == p, "mismatch of elems");
+		}
+		fc_deleteVariable(elemmap);
+
+		fail_unless(!FC_HANDLE_EQUIV(vertmap,FC_NULL_VARIABLE),
+			    "vertmmap should not be null");
+		fc_getVariableName(vertmap, &name_orig);
+		fail_unless(strcmp(name_orig,"FC_VERTEXMAP") == 0,
+			    "mismatch of name");
+		free(name_orig);
+		fc_getVariableInfo(vertmap, &numDP_orig, &numComp_orig,
+				   &assoc_orig, &mathType_orig,
+				   &dataType_orig);
+		fail_unless(dataType_orig == FC_DT_INT, "vertmap should be int");
+		fail_unless(mathType_orig == FC_MT_SCALAR, "vertmap should be scalar");
+		fail_unless(assoc_orig == FC_AT_VERTEX, "vertmap should be at vertex");
+		fail_unless(numComp_orig == 1, "vertmap should have 1 component");
+		fail_unless(numDP_orig == temp_numVertex, "mismatch of num datapoint");
+		fc_getVariableDataPtr(vertmap, (void*)&data_orig);
+		for (p = 0; p < temp_numVertex; p++){
+		  fail_unless(data_orig[p] == p, "mismatch of verts");
+		}
+		fc_deleteVariable(vertmap);
+	      }
+
 	      // query the subsets
 	      rc = fc_getSubsets(subset_mesh, &temp_numSubset, &temp_subsets);
 	      fail_unless(rc == FC_SUCCESS, "failed to get subsets");
@@ -1954,7 +2387,6 @@ START_TEST(create_subset_mesh)
 		free(members_orig);
 		free(members_new);
 	      }
-	      free(temp_subsets);
 
 	      // query the variables
 	      rc = fc_getVariables(subset_mesh, &temp_numVariable,
@@ -1998,6 +2430,56 @@ START_TEST(create_subset_mesh)
 	    
 	    // remaining cases return the 2nd element
 	    else { // the subset
+	      {
+		char* name_orig;
+		int numDP_orig, numComp_orig;
+		FC_AssociationType assoc_orig;
+		FC_MathType mathType_orig;
+		FC_DataType dataType_orig;
+		int* data_orig;
+
+		fail_unless(!FC_HANDLE_EQUIV(elemmap,FC_NULL_VARIABLE),
+			    "elemmap should not be null");
+		fc_getVariableName(elemmap, &name_orig);
+		fail_unless(strcmp(name_orig,"FC_ELEMENTMAP") == 0,
+			    "mismatch of name");
+		free(name_orig);
+		fc_getVariableInfo(elemmap, &numDP_orig, &numComp_orig,
+				   &assoc_orig, &mathType_orig,
+				   &dataType_orig);
+		fail_unless(dataType_orig == FC_DT_INT, "elemmap should be int");
+		fail_unless(mathType_orig == FC_MT_SCALAR, "elemmap should be scalar");
+		fail_unless(assoc_orig == FC_AT_ELEMENT, "elemmap should be at elem");
+		fail_unless(numComp_orig == 1, "elemmap should have 1 component");
+		fail_unless(numDP_orig == 1, "elemmap should have 1 datapoint");
+		fc_getVariableDataPtr(elemmap, (void*)&data_orig);
+		fail_unless(data_orig[0] == 1,
+			    "elemmap should have the original second element");
+
+		fail_unless(!FC_HANDLE_EQUIV(vertmap,FC_NULL_VARIABLE),
+			    "vertmap should not be null");
+		fc_getVariableName(vertmap, &name_orig);
+		fail_unless(strcmp(name_orig,"FC_VERTEXMAP") == 0,
+			    "mismatch of name");
+		free(name_orig);
+		fc_getVariableInfo(vertmap, &numDP_orig, &numComp_orig,
+				   &assoc_orig, &mathType_orig,
+				   &dataType_orig);
+		fail_unless(dataType_orig == FC_DT_INT, "vertmap should be int");
+		fail_unless(mathType_orig == FC_MT_SCALAR, "vertmap should be scalar");
+		fail_unless(assoc_orig == FC_AT_VERTEX, "vertmap should be at vertex");
+		fail_unless(numComp_orig == 1, "vertmap should have 1 component");
+		fail_unless(numDP_orig == numVertPerElem[i],
+			    "vertmap should have num datapoint in one elem");
+		fc_getVariableDataPtr(vertmap, (void*)&data_orig);
+		for (p = 0; p < numVertPerElem[i]; p++){
+		  fail_unless(data_orig[p] == vertLookup[i][p],
+			      "mismatch in vertmap");
+		}
+		fc_deleteVariable(elemmap);
+		fc_deleteVariable(vertmap);
+	      }
+
 	      // query the mesh
 	      rc = fc_getMeshInfo(subset_mesh, NULL, &temp_dim, &temp_numVertex,
 				  &temp_numElement, &temp_elemType);
@@ -2060,7 +2542,6 @@ START_TEST(create_subset_mesh)
 		}
 		free(members_new);
 	      }
-	      free(temp_subsets);
 
 	      // query the variables
 	      rc = fc_getVariables(subset_mesh, &temp_numVariable,
@@ -2169,10 +2650,10 @@ START_TEST(create_subset_mesh)
 	      fc_getVariableDataPtr(temp_variables[p], &data_orig);
 
 	      for (q = 0; q < numStep; q++) {
-		fc_getVariableName(temp_variables[p], &name_new);
+		fc_getVariableName(temp_seqVars[p][q], &name_new);
 		fail_unless(!strcmp(name_orig, name_new), "mismatch of name");
 		free(name_new);
-		fc_getVariableInfo(temp_variables[p], &numDP_new, &numComp_new,
+		fc_getVariableInfo(temp_seqVars[p][q], &numDP_new, &numComp_new,
 				   &assoc_new, &mathType_new, &dataType_new);
 		fail_unless(numDP_orig == numDP_new, 
 			    "mismatch of numDataPoint");
@@ -2183,25 +2664,154 @@ START_TEST(create_subset_mesh)
 			    "mismatch of mathType");
 		fail_unless(dataType_orig == dataType_new,
 			    "mismatch of dataType");
-		fc_getVariableDataPtr(temp_variables[p], &data_new);
+		fc_getVariableDataPtr(temp_seqVars[p][q], &data_new);
 		fail_unless(!memcmp(data_orig, data_new, numDP_new * 
 				numComp_new*fc_sizeofDataType(dataType_new)),
 			    "mismatch of data");
 	      }
 	      free(name_orig);
 	    }
+
+	    // query the sequence subsets
+	    // check against the basic subsets which we already checked
+	    rc = fc_getSeqSubsets(subset_mesh, &temp_numSeqSub,
+				    &temp_numStepPerSub, &temp_seqSubs);
+	    fail_unless(rc == FC_SUCCESS, "failed to get seqSubs");
+	    fail_unless(temp_numSeqSub == numSubset,
+			"mismatch of numSeqSub");
+	    for (p = 0; p < numSubset; p++) {
+	      FC_Sequence temp_seq;
+	      char* name_orig, *name_new;
+	      FC_AssociationType assoc_orig, assoc_new;
+	      int numMember_orig, numMember_new, maxNumMember_orig, maxNumMember_new;
+	      int *members_orig, *members_new;
+
+	      fc_getSequenceFromSeqSubset(temp_numStepPerSub[p],
+					 temp_seqSubs[p], &temp_seq);
+	      fail_unless(FC_HANDLE_EQUIV(temp_seq, temp_sequences[0]), 
+			  "mismatch of sequence");
+	      fail_unless(temp_numStepPerSub[p] = numStep, 
+			  "mismatch of numStep");
+
+	      // get "correct" answer from tested basic subsets
+	      fc_getSubsetName(temp_subsets[p], &name_orig);
+	      fc_getSubsetInfo(temp_subsets[p], &numMember_orig, &maxNumMember_orig,
+			       &assoc_orig);
+	      fc_getSubsetMembersAsArray(temp_subsets[p], &numMember_orig, &members_orig);
+	      for (q = 0; q < numStep; q++) {
+		fc_getSubsetName(temp_seqSubs[p][q], &name_new);
+		fail_unless(!strcmp(name_orig, name_new), "mismatch of name");
+		free(name_new);
+		fc_getSubsetInfo(temp_seqSubs[p][q], &numMember_new, &maxNumMember_new,
+				 &assoc_new);
+		fail_unless(numMember_orig == numMember_new,
+			    "mismatch of numMember");
+		fail_unless(maxNumMember_orig == maxNumMember_new,
+			    "mismatch of maxNumMember");
+		fail_unless(assoc_orig == assoc_new, "mismatch of assoc");
+		fc_getSubsetMembersAsArray(temp_seqSubs[p][q], &numMember_new, &members_new);
+		fail_unless(!memcmp(members_orig, members_new, numMember_new*sizeof(int)),
+			    "mismatch of members");
+		free(members_new);
+	      }
+	      free(name_orig);
+	      free(members_orig);
+	    }
+
 	    free(temp_sequences);
 	    free(temp_numStepPerVar);
+	    free(temp_numStepPerSub);
 	    for (p = 0; p < temp_numSeqVar; p++)
 	      free(temp_seqVars[p]);
 	    free(temp_seqVars);
+	    for (p = 0; p < temp_numSeqSub; p++)
+	      free(temp_seqSubs[p]);
+	    free(temp_seqSubs);
 
 	    // this came from different places depending on k case
 	    free(temp_variables);
+	    free(temp_subsets);
 
 	    // done with subset mesh
 	    rc = fc_deleteMesh(subset_mesh);
 	    fail_unless(rc == FC_SUCCESS, "failed to delete subset mesh");
+
+	    //test no copy options (try 3 cases)
+	    rc = fc_createSubsetMesh(subsets[k], datasets[n], m, 
+				     0,0,0,0,
+				     subset_mesh_name, &subset_mesh,
+				     &vertmap, &elemmap);
+	    fail_unless(rc == FC_SUCCESS, "failed to create subset mesh");
+	    //make sure nothing there, except maps
+	    rc = fc_getVariables(subset_mesh, &temp_numVariable,
+				 &temp_variables); 
+	    fail_unless(temp_numVariable == 2, "wrong num vars");
+	    for (p = 0; p < temp_numVariable; p++){
+	      char *tempname;
+	      rc  = fc_getVariableName(temp_variables[p],&tempname);
+	      fail_unless(rc == FC_SUCCESS, "can't get variable name");
+	      fail_unless(strcmp(tempname,"FC_ELEMENTMAP") == 0 ||
+			  strcmp(tempname,"FC_VERTEXMAP") == 0, 
+			  "wrong variable name");
+	      free(tempname);
+	    }
+	    free(temp_variables);
+	    rc = fc_getNumSeqVariable(subset_mesh,&temp_numVariable);
+	    fail_unless(rc == FC_SUCCESS, "failed to get num seqvars");
+	    fail_unless(temp_numVariable == 0, "wrong num of variables");
+	    rc = fc_getNumSubset(subset_mesh,&temp_numVariable);
+	    fail_unless(rc == FC_SUCCESS, "failed to get num subsets");
+	    fail_unless(temp_numVariable == 0, "wrong num of subsets");
+	    rc = fc_getNumSeqSubset(subset_mesh,&temp_numSubset);
+	    fail_unless(rc == FC_SUCCESS, "failed to get num subsets");
+	    fail_unless(temp_numVariable == 0, "wrong num of seq subsets");
+	    rc = fc_deleteMesh(subset_mesh);
+	    fail_unless(rc == FC_SUCCESS, "failed to delete subset mesh");
+
+
+	    rc = fc_createSubsetMesh(subsets[k], datasets[n], m, 
+				     1,0,0,1,
+				     subset_mesh_name, &subset_mesh,
+				     &vertmap, &elemmap);
+	    fail_unless(rc == FC_SUCCESS, "failed to create subset mesh");
+	    rc = fc_getNumVariable(subset_mesh,&temp_numVariable);
+	    fail_unless(rc == FC_SUCCESS, "failed to get num vars");
+	    fail_unless(temp_numVariable == 3 + topoDimPerType[i]+2, "wrong num of vars"); 
+	    rc = fc_getNumSeqVariable(subset_mesh,&temp_numVariable);
+	    fail_unless(rc == FC_SUCCESS, "failed to get num seqvars");
+	    fail_unless(temp_numVariable == 0, "wrong num of seq vars");
+	    rc = fc_getNumSubset(subset_mesh,&temp_numVariable);
+	    fail_unless(rc == FC_SUCCESS, "failed to get num subsets");
+	    fail_unless(temp_numVariable == 0, "wrong num of subsets");
+	    rc = fc_getNumSeqSubset(subset_mesh,&temp_numVariable);
+	    fail_unless(rc == FC_SUCCESS, "failed to get num seq subsets");
+	    if (topoDimPerType[i] <= 1)
+	      fail_unless(temp_numVariable == 5, "wrong number of seq subsets");
+	    else
+	      fail_unless(temp_numVariable == 5+topoDimPerType[i]-1, 
+			  "wrong number of seq subsets");
+
+	    rc = fc_createSubsetMesh(subsets[k], datasets[n], m, 
+				     0,1,1,0,
+				     subset_mesh_name, &subset_mesh,
+				     &vertmap, &elemmap);
+	    fail_unless(rc == FC_SUCCESS, "failed to create subset mesh");
+	    rc = fc_getNumVariable(subset_mesh,&temp_numVariable);
+	    fail_unless(rc == FC_SUCCESS, "failed to get num vars");
+	    fail_unless(temp_numVariable == 2, "wrong num of vars");
+	    rc = fc_getNumSeqVariable(subset_mesh,&temp_numVariable);
+	    fail_unless(rc == FC_SUCCESS, "failed to get num seqvars");
+	    fail_unless(temp_numVariable == 3 + topoDimPerType[i], "wrong num of seq vars"); 
+	    rc = fc_getNumSubset(subset_mesh,&temp_numVariable);
+	    fail_unless(rc == FC_SUCCESS, "failed to get num subsets");
+	    if (topoDimPerType[i] <= 1)
+	      fail_unless(temp_numVariable == 5, "wrong number of subsets");
+	    else
+	      fail_unless(temp_numVariable == 5+topoDimPerType[i]-1, 
+			  "wrong number of subsets");
+	    rc = fc_getNumSeqSubset(subset_mesh,&temp_numVariable);
+	    fail_unless(rc == FC_SUCCESS, "failed to get num subsets");
+	    fail_unless(temp_numVariable == 0, "wrong num of seq subsets");
 
 	  } // n - dataset
 	} // m - strickness
@@ -2372,6 +2982,186 @@ START_TEST(simple_hex_mesh)
   // *** all done
   rc = fc_deleteDataset(dataset);
   fail_unless(rc == FC_SUCCESS, "failed to delete dataset at end of testing");
+}
+END_TEST
+
+
+// test fc_createSphereMesh()
+START_TEST(sphere_mesh)
+{
+  FC_ReturnCode rc;
+  int i, j;
+  char name[] = "booya";
+  FC_Dataset dataset, bad_dataset = { -99, -99 };
+  FC_Coords center = { 1.0, 2.0, 3.0 };
+  FC_Mesh m1,m2;
+  double *points; //ro
+  const double init_radius = 6.0; 
+  double radius;
+
+  double rad_vals[] = {4.0, 5.0, 6.0, 7.0};
+  double centers[]  = {  1.0,  7.0,  6.0,
+			 8.0,  2.0, -3.0,
+			-2.0,  8.0,  5.0,
+			-5.0, -3.0,  9.0 };
+  const int num_step=4;
+
+  int sv_step;
+  FC_Variable *sv;
+  FC_Sequence seq;
+  FC_Variable  var_bad = {-100,-100};
+  double *disp_coords;
+  double  avg[3];
+
+  int topodim, dim, numVertex, numElement;
+  FC_ElementType elemType;
+
+
+
+  // *** make a dataset to play in
+  rc = fc_createDataset("ball dataset", &dataset);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create dataset");
+
+  // *** do it right
+  rc = fc_createSphereMesh(dataset, name, center, init_radius, 102, &m1);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create dataset");
+ 
+  rc = fc_getMeshInfo(m1, &topodim, &dim, &numVertex, &numElement, &elemType);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get mesh info");
+  //Note: ball is made of several planes (rings) and a top and bottom node
+  //thus,
+  // num_planes = sqrt(x-2)
+  // nodes = sqrt(x-2)^2 + 2 = num_planes^2+2 
+  // triangles = (num_planes-1)*(2*num_planes) + 2*num_planes
+  // for 102 nodes-> num_planes = 10
+  // exoect num tri to be 200
+
+  fail_unless(topodim==2, "abort: topodim not right");
+  fail_unless(dim==3, "abort: dim not right");
+  fail_unless(numVertex==102, "abort: topodim not right");
+  fail_unless(numElement==200, "abort: topodim not right");
+  fail_unless(elemType==FC_ET_TRI, "abort: wrong element type");
+
+  rc = fc_getMeshCoordsPtr(m1, &points);
+  fail_unless(rc == FC_SUCCESS, "abort: couldn't get coords");
+  for(i=0; i<numVertex; i++){
+    //All vertices should be the same as the radius distance away
+    rc = fc_calcEuclideanDistance(center, &points[i*3], 3, &radius);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to get node distance");
+    fail_unless(fc_eqd(radius, init_radius), "abort: radius didn't work out");
+  }
+  
+
+  //Now try the displacement 
+  rc = fc_createSequence(dataset, "booya seq", &seq);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get node distance");
+  rc = fc_setSequenceCoords(seq,num_step, FC_DT_DOUBLE, centers);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to set sequence");
+
+  rc = fc_createSeqVariable(m1, seq, "Booya SeqVar", &sv_step, &sv);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create seqvar");
+  fail_unless(sv_step==num_step, "abort: bad step count");
+
+  //Set the values
+  for(i=0; i<sv_step; i++){
+    rc = fc_setSphereDisplacementVariable( sv[i], &centers[i*3], rad_vals[i]);
+    fail_unless(rc == FC_SUCCESS, "abort: problem setting displacement variable");
+  }
+
+  //Check
+  for(i=0; i<sv_step; i++){
+    rc = fc_getDisplacedMeshCoords(m1, sv[i], &disp_coords); 
+    fail_unless(rc == FC_SUCCESS, "abort: problem setting displacement variable");
+
+
+    //Note: error accumulates here because we average lots of points. Thus
+    //      we need to crank epsilon up to help tolerance. 1e-15 still worked
+    //      on my machine, but I'm setting the tolerance to 1e-10 for older
+    //      machines. In reality, we're dealing with integers, so this should be fine.
+
+    //Find distance from expected center to all values
+    for(j=0; j<numVertex; j++){
+      rc = fc_calcEuclideanDistance(&centers[i*3], &disp_coords[j*3], 3, &radius);
+      //printf("[%d] %.16lf vs %.16lf\n",i, rad_vals[i], radius);
+      fail_unless(rc == FC_SUCCESS, "abort: failed to get node distance");
+      fail_unless(fc_eq(radius, rad_vals[i], 1e-10, DBL_MIN), "abort: radius didn't work out");
+    }
+    
+    //Averaging all of the points together should give the center. This is similar
+    //to the above, BUT, the center should only work out if the points are equally
+    //distributed along the sphere (eg, an avg wouldn't give you the center if
+    //all the points were on one side).
+    memset(avg, 0, 3*sizeof(double));
+    for(j=0; j<numVertex*3; j++){
+      avg[ j%3 ] += disp_coords[j];
+    }
+
+    //printf("\n[%d] ",i);
+    for(j=0;j<3;j++){
+      avg[j] /= numVertex;
+      //printf(" (%.16lf|%.16lf) ",avg[j], centers[i*3+j]);
+      fail_unless( fc_eq(avg[j], centers[i*3+j], 1e-10, DBL_MIN), "abort: sphere centers didn't match up");
+    }
+    //printf("\n");
+    free(disp_coords);
+  }
+
+  //Should be ok if we give 0 for number of nodes
+  rc = fc_createSphereMesh(dataset, "shiznet", center, init_radius, 0, &m2);
+  fail_unless(rc == FC_SUCCESS, "abort: didn't use default number of nodes");
+  rc = fc_getMeshInfo(m2, NULL, NULL, &numVertex, NULL, NULL);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get mesh info");
+  fail_unless(numVertex > 1, "abort: Didn't generate a mesh with points");  
+
+
+
+  // *** test doing it wrong
+  // bad dataset
+  rc = fc_createSphereMesh(bad_dataset, name, center, init_radius, 102, &m2);
+  fail_unless(rc != FC_SUCCESS, "should fail on bad dataset");
+  fail_unless(FC_HANDLE_EQUIV(m2, FC_NULL_MESH), "fail should return null");
+
+  rc = fc_createSphereMesh(dataset, NULL, center, init_radius, 102, &m2);
+  fail_unless(rc != FC_SUCCESS, "should faile on bad name");
+  fail_unless(FC_HANDLE_EQUIV(m2, FC_NULL_MESH), "fail should return null");
+
+  rc = fc_createSphereMesh(dataset, name, center, init_radius, 102, NULL);
+  fail_unless(rc != FC_SUCCESS, "should fail on bad output variable");
+
+  rc = fc_createSphereMesh(dataset, name, center, -2.0, 102, &m2);
+  fail_unless(rc != FC_SUCCESS, "should fail on negative radius");
+  fail_unless(FC_HANDLE_EQUIV(m2, FC_NULL_MESH), "fail should return null");
+
+
+  //Fail the displacement
+  rc = fc_setSphereDisplacementVariable( var_bad, &centers[0], rad_vals[0]);
+  fail_unless(rc != FC_SUCCESS, "should fail on bad variable");
+
+  free(sv);
+
+  //setup - make a new sv that we can fill in
+  rc = fc_createSeqVariable(m1, seq, "Booya SeqVar2", &sv_step, &sv);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create seqvar");
+  fail_unless(sv_step==num_step, "abort: bad step count");
+
+  rc = fc_setSphereDisplacementVariable( sv[0], NULL, rad_vals[0]);
+  fail_unless(rc != FC_SUCCESS, "should fail on bad variable");
+  rc = fc_setSphereDisplacementVariable( sv[0], &centers[0], 0.0);
+  fail_unless(rc != FC_SUCCESS, "should fail on bad variable");
+
+  //Try setting a variable twice.. should fail
+  rc = fc_setSphereDisplacementVariable( sv[0], &centers[0], rad_vals[0]);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to set var");
+  rc = fc_setSphereDisplacementVariable( sv[0], &centers[0], rad_vals[0]);
+  fail_unless(rc != FC_SUCCESS, "should fail when setting a displacement twice?");
+ 
+
+  // *** all done
+  free(sv);
+
+  rc = fc_deleteDataset(dataset);
+  fail_unless(rc == FC_SUCCESS, "failed to delete dataset at end of testing"); 
+
 }
 END_TEST
 
@@ -5245,6 +6035,7 @@ Suite *mesh_suite(void)
   tcase_add_test(tc_mesh, coords_as_var);
   tcase_add_test(tc_mesh, create_subset_mesh);
   tcase_add_test(tc_mesh, simple_hex_mesh);
+  tcase_add_test(tc_mesh, sphere_mesh);
   tcase_add_test(tc_mesh, print);
 
   // connectivities and neighbors

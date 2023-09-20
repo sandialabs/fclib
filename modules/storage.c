@@ -47,6 +47,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 // fc library dependencies
 #include "base.h"
@@ -102,9 +103,11 @@ FC_ReturnCode fc_initSortedIntArray(
 
   fc_printfLogMessage("Initing sorted int array");
 
-  sia->numVal = 0;
-  sia->maxNumVal = 0;
-  sia->vals = NULL;
+  sia->numVal     = 0;
+  sia->maxNumVal  = 0;
+  sia->vals       = NULL;
+  sia->nextTicket = 0;
+  sia->tickets    = NULL;
   
   return FC_SUCCESS;
 }
@@ -119,16 +122,18 @@ FC_ReturnCode fc_initSortedIntArray(
  *    1 if the sorted array looks valid and 0 if it does not.
  *
  * \modifications
- *    - 06/06/06 ACG Created.
+ *    - 2006/06/06 ACG Created.
  */
 int fc_isSortedIntArrayValid(
   FC_SortedIntArray *sia /**< input - sortedIntArray */
 )
 {
-  if (!sia || sia->numVal < 0 || sia->maxNumVal < 0 ||
-      sia->numVal > sia->maxNumVal ||
-      (sia->maxNumVal == 0 && sia->vals != NULL) ||
-      (sia->maxNumVal > 0 && sia->vals == NULL)) {
+  if ((!sia) || 
+      (sia->numVal < 0)                                                                 || 
+      (sia->maxNumVal < 0)                                                              ||
+      (sia->numVal > sia->maxNumVal)                                                    ||
+      ((sia->maxNumVal == 0) && ((sia->vals != NULL)|| (sia->tickets!=NULL))) ||
+      ((sia->maxNumVal  > 0) && ((sia->vals == NULL)|| (sia->tickets==NULL)))   ) {
     return 0;
   }
   else
@@ -145,7 +150,8 @@ int fc_isSortedIntArrayValid(
  *    be initialized. This peforms a deep copy (i.e. internal data is copied).
  *
  * \modifications
- *    - 08/04/06 WSD Created.
+ *    - 2006/08/04 WSD Created.
+ *    - 2008/05/02 CDU Updated to support getting unsorted vals back
  */
 FC_ReturnCode fc_copySortedIntArray(
   FC_SortedIntArray *sia_src, /**< input - sortedIntArray to copy*/
@@ -159,18 +165,24 @@ FC_ReturnCode fc_copySortedIntArray(
 
   fc_printfLogMessage("Copying sorted int array");
 
-  sia_dest->numVal = sia_src->numVal;
+  sia_dest->numVal    = sia_src->numVal;
   sia_dest->maxNumVal = sia_src->numVal;
+  sia_dest->nextTicket = sia_src->nextTicket;
   if (sia_src->numVal > 0) {
-    sia_dest->vals = malloc(sia_src->numVal*sizeof(int));
-    if (sia_dest->vals == NULL) {
+    sia_dest->vals              = malloc(sia_src->numVal*sizeof(int));
+    sia_dest->tickets = malloc(sia_src->numVal*sizeof(unsigned int));
+    if((sia_dest->vals == NULL) ||
+       (sia_dest->tickets == NULL)){
       fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
       return FC_MEMORY_ERROR;
     }
     memcpy(sia_dest->vals, sia_src->vals, sia_src->numVal*sizeof(int));
+    memcpy(sia_dest->tickets, sia_src->tickets, sia_src->numVal*sizeof(unsigned int));
+
   }
   else {
-    sia_dest->vals = NULL;
+    sia_dest->vals    = NULL;
+    sia_dest->tickets = NULL;
   }
   
   return FC_SUCCESS;
@@ -181,7 +193,7 @@ FC_ReturnCode fc_copySortedIntArray(
  * \brief Get number of values in sorted int array.
  *
  * \modifications
- *    - 08/03/06 WSD created.
+ *    - 2006/08/03 WSD created.
  */
 FC_ReturnCode fc_getSortedIntArrayNumValue(
   FC_SortedIntArray *sia,  /**< input - sortedIntArray */
@@ -215,7 +227,7 @@ FC_ReturnCode fc_getSortedIntArrayNumValue(
  *    convert by using \ref fc_convertSortedIntArrayToIntArray.
  *
  * \modifications
- *    - 08/04/06 WSD created.
+ *    - 2006/08/04 WSD created.
  */
 FC_ReturnCode fc_getSortedIntArrayValues(
   FC_SortedIntArray *sia,  /**< input - sortedIntArray */
@@ -252,6 +264,91 @@ FC_ReturnCode fc_getSortedIntArrayValues(
 
   return FC_SUCCESS;
 }
+
+
+int _fc_qsortCmpInt(const void *a, const void *b){
+  if( *((const int *)a) < *((const int *)b) ) return -1;
+  if( *((const int *)a) > *((const int *)b) ) return  1;
+  return 0;      
+}
+
+
+/**
+ * \ingroup SimpleDataObjects
+ * \brief Get a copy of the values stored in the sorted array, orderd in the way they were inserted
+ *
+ * \description
+ *
+ *    Returns a copy of the values stores in the sorted int array, ordered in the
+ *    way they were inserted. This allows a sortedIntArray to be used as a
+ *    list where ordering is significant.  The caller
+ *    is responsible for freeing the return array.  If you know you never want
+ *    to use the current values of the sorted int array again, you can instead
+ *    convert by using \ref fc_convertSortedIntArrayToIntArray. If you don't
+ *    care about order, \ref fc_getSortedIntArrayValues is faster. 
+ *
+ * \modifications
+ *    - 2008/05/02 CDU created.
+ */
+FC_ReturnCode fc_getSortedIntArrayValuesInInsertOrder(
+
+  FC_SortedIntArray *sia,  /**< input - sortedIntArray */
+  int* numValue,           /**< output - number of values */
+  int** values             /**< output - values (needs to be freed) */
+){
+  
+  int  i;
+  int *tmp;
+  
+
+  // default returns
+  if (numValue)
+    *numValue = -1;
+  if (values)
+    *values = NULL;
+
+  // check arguments
+  if (!fc_isSortedIntArrayValid(sia) || !numValue || !values) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  // easy case - no valus
+  if (sia->numVal == 0) {
+    *numValue = 0;
+    *values = NULL;
+    return FC_SUCCESS;
+  }
+
+  // do it
+  *values = malloc(sia->numVal*sizeof(int));
+  if (!(*values)) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+    return FC_MEMORY_ERROR;
+  }
+  *numValue = sia->numVal;
+
+
+  //Need to resort the values by their insert id. We can do this by
+  //packing both the insert time and val together and passing on
+  //to quicksort. Quicksort is given an integer comparison function
+  //and a stride of 2 to make this work. After everything, we
+  //unpack the results
+  tmp = malloc(sia->numVal * 2 * sizeof(int));
+  for(i=0; i<sia->numVal; i++){
+    tmp[2*i+0] = sia->tickets[i];
+    tmp[2*i+1] = sia->vals[i];
+  }
+  qsort((void *) tmp, sia->numVal, 2*sizeof(int), _fc_qsortCmpInt );
+  
+  for(i=0; i<sia->numVal; i++)
+    (*values)[i] = tmp[2*i+1]; //Grab vals
+
+  free(tmp);
+
+  return FC_SUCCESS;
+}
+							
 
 /**
  * \ingroup SimpleDataObjects
@@ -338,7 +435,8 @@ int fc_addIntToSortedIntArray(
  *    The incoming int array can have repeated values.
  *
  * \modifications
- *    - 07/13/06 WSD Created.
+ *    - 2006/07/13 WSD Created.
+ *    - 2008/05/02 CDU Updated to support getting unsorted vals back
  */
 int fc_addIntArrayToSortedIntArray(
   FC_SortedIntArray *sia, /**< input/output - sortedIntArray */
@@ -347,10 +445,11 @@ int fc_addIntArrayToSortedIntArray(
   int isSorted            /**< input - flag, 1 = incoming ints are sorted */
 ){
   int i, j;
-  FC_ReturnCode rc;
-  int *sortedArray;
+  //int *sortedArray;
   int numAdded;
-  int newNum, newMaxNum, *newVals;
+  int newNum, newMaxNum, *newVals, *newTickets;
+  int spacing;
+  int *combined;
 
   // check input
   if (!fc_isSortedIntArrayValid(sia) || num < 0 || (num > 0 && array == NULL)) {
@@ -363,24 +462,36 @@ int fc_addIntArrayToSortedIntArray(
     return 0;
   
   // sort, if necessary
-  if (isSorted)
-    sortedArray = array;
-  else {
-    sortedArray = (int*)malloc(num*sizeof(int));
-    if (!sortedArray) {
+  if (isSorted) {
+    //Since this is already sorted, just use it. We have to use a spacing
+    //of one since "combined" isn't really a combination- it's just a
+    //pointer to vals.
+    spacing = 1;
+    combined = array;
+  }else {
+    
+    //Create a combined block where val and insert id are interleaved
+    spacing = 2;
+    combined = (int *)malloc(num*2*sizeof(int));
+    if(!combined){
       fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
       return FC_MEMORY_ERROR;
     }
-    memcpy(sortedArray, array, num*sizeof(int));
-    rc = fc_sortIntArray(num, sortedArray);
-    if (rc != FC_SUCCESS)
-      return rc;
+    for(i=0;i<num;i++){
+      combined[i*2+0] = array[i]; //value that gets looked at
+      combined[i*2+1] = i;
+    }
+    qsort((void *) combined, num, 2*sizeof(int), _fc_qsortCmpInt );
+
   }
 
   // make space for result (will replace current sia->vals)
   newMaxNum = sia->numVal + num;
   newVals = (int*)malloc(newMaxNum*sizeof(int));
-  if (newVals == NULL){
+  newTickets = (int *)malloc(newMaxNum*sizeof(int));
+  if ((newVals == NULL) || (newTickets==NULL)){
+    free(newVals);
+    free(newTickets);
     fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
     return FC_MEMORY_ERROR;
   }
@@ -390,39 +501,50 @@ int fc_addIntArrayToSortedIntArray(
   newNum = 0;
   i = j = 0;
   while (i < sia->numVal && j < num) {
-    if (sia->vals[i] < sortedArray[j]) {
-      newVals[newNum] = sia->vals[i];
+    if (sia->vals[i] < combined[j*spacing]) {
+      //Original array smaller
+      newVals[newNum]    = sia->vals[i];
+      newTickets[newNum] = sia->tickets[i];
       newNum++;
       i++;
     }
-    else if (sortedArray[j] < sia->vals[i]) {
-      newVals[newNum] = sortedArray[j];
+    else if (combined[j*spacing] < sia->vals[i]) {
+      //New val is smaller
+      newVals[newNum] = combined[j*spacing];
+      newTickets[newNum] = sia->nextTicket;          //All new vals start at current ticket
+      newTickets[newNum] += (isSorted) ? j : combined[j*2+1]; //Plus their insert id
       newNum++;
       numAdded++;
       j++;
-      while (j < num && sortedArray[j] == sortedArray[j-1]) // skip duplicates
+      while ((j < num) && (combined[j*spacing] == combined[(j-1)*spacing])) // skip duplicates
 	j++;
     }
     else {
       newVals[newNum] = sia->vals[i];
+      newTickets[newNum] = sia->tickets[i];
       newNum++;
       i++;
       j++;
-      while (j < num && sortedArray[j] == sortedArray[j-1]) // skip duplicates
+      while ((j < num) && (combined[j*spacing] == combined[(j-1)*spacing])) // skip duplicates
 	j++;
     }
   }
   if (i < sia->numVal) {
-    memcpy(newVals+newNum, sia->vals+i, (sia->numVal-i)*sizeof(int));
+    //Leftovers in original array
+    memcpy(&newVals[newNum],    &sia->vals[i],              (sia->numVal-i)*sizeof(int));
+    memcpy(&newTickets[newNum], &sia->tickets[i], (sia->numVal-i)*sizeof(int));
     newNum += sia->numVal-i;
   }
   else if (j < num) {
+    //Leftovers in new array
     while (j < num) {
-      newVals[newNum] = sortedArray[j];
+      newVals[newNum]    = combined[j*spacing];
+      newTickets[newNum] = sia->nextTicket;          //All new vals start at current ticket
+      newTickets[newNum] += (isSorted) ? j : combined[j*2+1]; //Plus their insert id
       newNum++;
       numAdded++;
       j++;
-      while (j < num && sortedArray[j] == sortedArray[j-1]) // skip duplicates
+      while ((j < num) && (combined[j*spacing] == combined[(j-1)*spacing])) // skip duplicates
 	j++;
     }
   }
@@ -430,17 +552,23 @@ int fc_addIntArrayToSortedIntArray(
   // swap old vals for new
   if (numAdded == 0) {
     free(newVals);
+    free(newTickets);
   }
   else {
+    assert(sia->nextTicket+num > sia->nextTicket); //Check for overflow
+
     free(sia->vals);
+    free(sia->tickets);
     sia->numVal = newNum;
     sia->maxNumVal = newMaxNum;
     sia->vals = newVals;
+    sia->tickets = newTickets;
+    sia->nextTicket += num; //must do all of array, even if some unused
   }
 
   // cleanup after sort, if necessary
   if (!isSorted)
-    free(sortedArray);
+    free(combined);
 
   return numAdded;
 }
@@ -588,6 +716,7 @@ int fc_getSortedIntArrayBack(
  *
  * \modifications
  *    - 08/03/06 WSD Created.
+ *    - 2008/05/02 CDU Updated to support getting unsorted vals back
  */
 int fc_popSortedIntArrayFront(
   FC_SortedIntArray *sia /**< input/output - sortedIntArray */
@@ -601,8 +730,10 @@ int fc_popSortedIntArrayFront(
   // do it (do minimum amt of work)
   if (sia->numVal > 0) {
     sia->numVal--;
-    if (sia->numVal > 0) 
-      memmove(sia->vals, sia->vals+1, sia->numVal*sizeof(int)); 
+    if (sia->numVal > 0) {
+      memmove(sia->vals,    sia->vals+1,    sia->numVal*sizeof(int));
+      memmove(sia->tickets, sia->tickets+1, sia->numVal*sizeof(int));
+    }
     return 1;
   }
   else {
@@ -658,7 +789,7 @@ int fc_popSortedIntArrayBack(
 FC_ReturnCode fc_squeezeSortedIntArray(
   FC_SortedIntArray *sia /**< input - sortedIntArray */
 ){
-  int* temp;
+  int *temp1, *temp2;
 
   // check args
   if (!fc_isSortedIntArrayValid(sia)){
@@ -673,19 +804,27 @@ FC_ReturnCode fc_squeezeSortedIntArray(
   // special case - empty
   if (sia->numVal == 0) {
     free(sia->vals);
+    free(sia->tickets);
     sia->maxNumVal = 0;
     sia->vals = NULL;
+    sia->tickets = NULL;
+    sia->nextTicket = 0;
     return FC_SUCCESS;
   }
 
   // do it
-  temp = (int*)realloc(sia->vals,(sia->numVal)*sizeof(int));
-  if (temp == NULL){
+  temp1 = (int*)realloc(sia->vals,    (sia->numVal)*sizeof(int));
+  temp2 = (int*)realloc(sia->tickets, (sia->numVal)*sizeof(int));
+
+  if((temp1 == NULL)||(temp2 == NULL)){
     fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
     return FC_MEMORY_ERROR;
   }
+
   sia->maxNumVal = sia->numVal;
-  sia->vals = temp;
+  sia->vals      = temp1;
+  sia->tickets   = temp2;
+
 
   return FC_SUCCESS;
 }
@@ -701,7 +840,8 @@ FC_ReturnCode fc_squeezeSortedIntArray(
  *    was automatically allocated.
  *
  * \modifications
- *    - 06/06/06 ACG Created.
+ *    - 2006/06/06 ACG Created.
+ *    - 2008/05/02 CDU Updated to support getting unsorted vals back
  */
 void fc_freeSortedIntArray(
   FC_SortedIntArray *sia /**< input/output - sortedIntArray */
@@ -713,9 +853,12 @@ void fc_freeSortedIntArray(
 
   if (sia->vals){
     free(sia->vals);
+    free(sia->tickets);
     sia->numVal = 0;
     sia->maxNumVal = 0;
+    sia->nextTicket = 0;
     sia->vals = NULL;
+    sia->tickets = NULL;
   }
 }
 
@@ -755,6 +898,18 @@ FC_ReturnCode fc_printSortedIntArray(
     }
     printf("\n");
   }
+  printf("    insert tickets =");
+  if (sia->numVal == 0){
+    printf(" (empty)\n");
+  }
+  else {
+    for (i = 0; i < sia->numVal; i++){
+      printf(" %d",sia->tickets[i]);
+    }
+    printf("\n");
+  }
+
+
   fflush(NULL);
   
   return FC_SUCCESS;
@@ -1136,8 +1291,12 @@ void fc_freeSortedBlobArray(
  *    NOTE: It was decided not to handle duplicates because this is meant
  *    to be a quick conversion.
  *
+ *    NOTE: For speed, insert order is calculated on the sorted version
+ *    of the array and not the order passed to the function (see above).
+ *
  * \modifications
- *    - 08/04/06 WSD Created.
+ *    - 2006/08/04 WSD Created.
+ *    - 2008/05/02 CDU Updated to support getting unsorted vals back
  */
 int fc_convertIntArrayToSortedIntArray(
   int num,                /**< input - number of ints in array */
@@ -1146,6 +1305,7 @@ int fc_convertIntArrayToSortedIntArray(
   FC_SortedIntArray *sia  /**< input/output - sortedIntArray */
 ){
   FC_ReturnCode rc;
+  int i;
 
   // default return
   // ??? init the sia?
@@ -1173,6 +1333,14 @@ int fc_convertIntArrayToSortedIntArray(
   sia->numVal = num;
   sia->maxNumVal = num;
   sia->vals = array;
+  sia->tickets = (int *)malloc(num*sizeof(int));
+  if(!sia->tickets){
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+    return FC_MEMORY_ERROR;
+  }
+  for(i=0;i<num;i++) 
+    sia->tickets[i] = i;
+  sia->nextTicket = num;
 
   return FC_SUCCESS;
 }
@@ -1189,8 +1357,9 @@ int fc_convertIntArrayToSortedIntArray(
  *    malloc'd. 
  *
  * \modifications
- *    - 08/04/06 WSD Created.
- */
+ *    - 2006/08/04 WSD Created.
+ *    - 2008/05/02 CDU Updated to support getting unsorted vals back
+*/
 int fc_convertSortedIntArrayToIntArray(
   FC_SortedIntArray *sia, /**< input/output - sortedIntArray */
   int* num,               /**< input - number of ints in array */
@@ -1221,6 +1390,9 @@ int fc_convertSortedIntArrayToIntArray(
   sia->numVal = 0;
   sia->maxNumVal = 0;
   sia->vals = NULL;
+  free(sia->tickets);
+  sia->tickets = NULL;
+  sia->nextTicket = 0;
 
   return FC_SUCCESS;
 }
@@ -1464,7 +1636,8 @@ FC_ReturnCode _fc_lookupIntInSortedIntArray(
  *    and uniqueness of the sorted int array!
  *
  * \modifications
- *    - 08/04/06 WSD Created.
+ *    - 2006/08/04 WSD Created.
+ *    - 2008/05/02 CDU Updated to support getting unsorted vals back
  */
 FC_ReturnCode _fc_addEntryToSortedIntArray(
   FC_SortedIntArray *sia, /**< input/output - sortedIntArray */
@@ -1472,6 +1645,8 @@ FC_ReturnCode _fc_addEntryToSortedIntArray(
   int value               /**< input - the value to add */
 )
 {
+  FC_ReturnCode rc;
+
   // check args
   if (!fc_isSortedIntArrayValid(sia) || idx < 0 || idx > sia->numVal) {
     fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
@@ -1479,16 +1654,28 @@ FC_ReturnCode _fc_addEntryToSortedIntArray(
   }
 
   // make sure there is room
-  if (sia->numVal >= sia->maxNumVal)
-    _fc_expandIntArray(&sia->maxNumVal, &sia->vals);
+  if (sia->numVal >= sia->maxNumVal){
+    int tmp;
+    tmp = sia->maxNumVal;
+    rc = _fc_expandIntArray(&sia->maxNumVal, &sia->vals);
+    if(rc!=FC_SUCCESS)
+      return rc;
+
+    rc = _fc_expandIntArray(&tmp, &sia->tickets);
+    if(rc!=FC_SUCCESS)
+      return rc;
+  }
 
   // do it
   if (idx < sia->numVal) {
-    memmove((sia->vals)+idx+1,(sia->vals)+idx,
-	    (sia->numVal-idx)*sizeof(int));
+    memmove(&sia->vals[idx+1],    &sia->vals[idx],    (sia->numVal-idx)*sizeof(int));
+    memmove(&sia->tickets[idx+1], &sia->tickets[idx], (sia->numVal-idx)*sizeof(int));
   }
   sia->vals[idx] = value;
+  sia->tickets[idx] = sia->nextTicket; 
   sia->numVal++;
+  sia->nextTicket++; 
+  assert(sia->nextTicket > sia->tickets[idx]); //Look for overflow
 
   return FC_SUCCESS;
 }
@@ -1521,8 +1708,8 @@ FC_ReturnCode _fc_deleteEntryFromSortedIntArray(
   
   // do it
   if (idx+1 < sia->numVal) {
-    memmove((sia->vals)+idx,(sia->vals)+idx+1,
-	    (sia->numVal-(idx+1))*sizeof(int));
+    memmove(&sia->vals[idx],              &sia->vals[idx+1],              (sia->numVal-(idx+1))*sizeof(int));
+    memmove(&sia->tickets[idx], &sia->tickets[idx+1], (sia->numVal-(idx+1))*sizeof(int));
   }
   sia->numVal--;
   

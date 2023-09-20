@@ -55,10 +55,34 @@ extern "C" {
 FC_ReturnCode fc_setLibraryVerbosity(FC_VerbosityLevel verbosity);
 FC_VerbosityLevel fc_getLibraryVerbosity(void);
 
+// Library Log counters
+//-------------------------------
+void fc_printLogCounters(FC_VerbosityLevel minLevel);
+
 // Library init/final
 //-------------------------------
 FC_ReturnCode fc_initLibrary(void);
 FC_ReturnCode fc_finalLibrary(void);
+
+
+/**
+ * \ingroup Library
+ * \brief  Error notification log counts
+ *
+ * \description
+ *
+ *    This is a simple global data structure for counting the number
+ *    of warning, error, and log messages that have been posted.
+ */
+typedef struct {
+  unsigned int errors;
+  unsigned int warnings;
+  unsigned int logs;
+  unsigned int debugs;
+} FC_LogCount;
+
+extern FC_LogCount _fc_log_count;
+
 
 /** 
  * \name Message functions
@@ -95,6 +119,7 @@ FC_ReturnCode fc_finalLibrary(void);
  */
 #define fc_printfErrorMessage(message, ...)  \
   { \
+    _fc_log_count.errors++; \
     if (fc_getLibraryVerbosity() >= FC_ERROR_MESSAGES)  { \
       fprintf(stderr, "FC Error:%s[%s:%d]: " message "\n", \
               __func__, __FILE__, __LINE__, ##__VA_ARGS__); \
@@ -128,6 +153,7 @@ FC_ReturnCode fc_finalLibrary(void);
  */
 #define fc_printfWarningMessage(message, ...)  \
   { \
+    _fc_log_count.warnings++; \
     if (fc_getLibraryVerbosity() >= FC_WARNING_MESSAGES) { \
       fprintf(stderr, "FC Warning:%s[%s:%d]: " message "\n", \
               __func__, __FILE__, __LINE__, ##__VA_ARGS__); \
@@ -161,6 +187,7 @@ FC_ReturnCode fc_finalLibrary(void);
  */
 #define fc_printfLogMessage(message, ...)  \
   { \
+    _fc_log_count.logs++; \
     if (fc_getLibraryVerbosity() >= FC_LOG_MESSAGES) { \
       fprintf(stdout, "FC Log:%s[%s:%d]: " message "\n", \
               __func__, __FILE__, __LINE__, ##__VA_ARGS__); \
@@ -194,6 +221,7 @@ FC_ReturnCode fc_finalLibrary(void);
  */
 #define fc_printfDebugMessage(message, ...)  \
   { \
+    _fc_log_count.debugs++; \
     if (fc_getLibraryVerbosity() >= FC_DEBUG_MESSAGES) { \
       fprintf(stdout, "FC Debug:%s[%s:%d]: " message "\n", \
               __func__, __FILE__, __LINE__, ##__VA_ARGS__); \

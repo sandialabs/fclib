@@ -305,6 +305,7 @@ FC_ReturnCode fc_setSequenceCoordsPtr(
  *
  * \modifications 
  *   - 2003-NOV-11 WSK Created
+ *   - 2008-MAR-26 CDU Updated to allow zero-length sequences
  */
 FC_ReturnCode fc_copySequence(
   FC_Sequence src_seq, /**< Input - the source sequence to be copied */
@@ -360,10 +361,21 @@ FC_ReturnCode fc_copySequence(
     fc_printfErrorMessage("Failed to create sequence '%s'", newName);
     return rc;
   }
-  rc = fc_setSequenceCoords(*new_seq, numStep, dataType, coords);
-  if (rc != FC_SUCCESS) {
-    fc_printfErrorMessage("Failed to set coords for sequence '%s'", newName);
-    return rc;
+
+  // Copy the coordinates
+  if(numStep==0){
+    //Some datasets have sequences that have 0 steps (eg, Cubit
+    //will add a sequence named "time" that has 0 steps). Thus, we
+    //allow users to copy the empty subset from one dataset to another.
+    fc_printfWarningMessage("Copying an empty sequence named '%s'",
+			    src_seqSlot->header.name );
+
+  } else {
+    rc = fc_setSequenceCoords(*new_seq, numStep, dataType, coords);
+    if (rc != FC_SUCCESS) {
+      fc_printfErrorMessage("Failed to set coords for sequence '%s'", newName);
+      return rc;
+    }
   }
 
   return rc;

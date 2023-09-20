@@ -686,7 +686,8 @@ FC_ReturnCode fc_addROIsUsingBasicEvents(
  *    free(idsPerGroup[i]); } free(idsPerGroup).
  *
  * \modifications  
- *    - 03/14/06 WSD Created
+ *    - 2006/03/14 WSD Created
+ *    - 2008/05/05 CDU Updated to fixe memleak in new sorted lists
  */
 FC_ReturnCode fc_groupSelfCorrespond(
   int num,           /**< input - number of objects */
@@ -806,6 +807,7 @@ FC_ReturnCode fc_groupSelfCorrespond(
     if (lists[i].numVal > 0) {
       (*numPerGroup)[temp_num] = lists[i].numVal;
       (*idsPerGroup)[temp_num] = lists[i].vals;
+      free(lists[i].tickets); //not used
       temp_num++;
     }
   }

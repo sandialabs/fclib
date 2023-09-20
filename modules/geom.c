@@ -7479,3 +7479,535 @@ void _fc_calcHexVolume(
 }
 
 //@}
+
+
+/**
+ * \ingroup GeometricRelations
+ * \brief Deteremine where a ray intersects with a triangle
+ *
+ * \description
+ * 
+ *   Given a ray (ie, point and direction) and a triangle, determine if and where
+ *   the ray intersects the triangle. This implementation is taken from the
+ *   well-known algorithm from Moller and Trumbore's 1997 "Fast, Minimum Storage
+ *   Ray-Triangle Intersection" paper. 
+ *
+ *    returns 1 if an intersection occurred, or 0 if they do not intersect
+ *
+ * \modifications
+ *    - 03/20/2008 CDU Initial version
+ *
+ */
+int fc_getIntersectionBetweenRayAndTriangle(
+     double ray_origin[3],    /**< input - coordinate for where the ray originates */
+     double ray_direction[3], /**< input - normalized direction of the ray */
+     double tri_vert0[3],     /**< input - Triangle vertex coordinate 1 */ 
+     double tri_vert1[3],     /**< input - Triangle vertex coordinate 2 */ 
+     double tri_vert2[3],     /**< input - Triangle vertex coordinate 3 */ 
+     double *t,               /**< output - Distance from origin to the point of intersection (can be negative if opposite direction of ray) */
+     double *u,               /**< output - Intersection coordinate within triangle */
+     double *v){              /**< output - Intersecrion coordinate within triangle */
+  
+#define RTI_DEBUG (0)
+#define RTI_DBG(a,b) { if(RTI_DEBUG) printf(" (%.3lf) %s\n", b, (a)?"hit":"miss"); }
+
+  double edge1[3], edge2[3], tvec[3], pvec[3], qvec[3];
+  double det,inv_det;
+  double tt,uu,vv;
+  const double RTI_EPSILON =  0.000001;
+
+  #define CROSS(dest,v1,v2) \
+    dest[0]=v1[1]*v2[2]-v1[2]*v2[1];	   \
+    dest[1]=v1[2]*v2[0]-v1[0]*v2[2];	   \
+    dest[2]=v1[0]*v2[1]-v1[1]*v2[0];
+  #define DOT(v1,v2) (v1[0]*v2[0]+v1[1]*v2[1]+v1[2]*v2[2])
+  #define SUB(dest,v1,v2)	       \
+    dest[0]=v1[0]-v2[0];	       \
+    dest[1]=v1[1]-v2[1];	       \
+    dest[2]=v1[2]-v2[2]; 
+
+#if RTI_DEBUG
+  { //Debug code for comparing intersections
+    int i;
+    printf("Origin:");
+    for(i=0; i<3;i++) printf(" %.3lf", ray_origin[i]);
+    printf("  direction:");
+    for(i=0; i<3;i++) printf(" %.3lf", ray_direction[i]);
+    printf("  p0:");
+    for(i=0; i<3;i++) printf(" %.3lf", tri_vert0[i]);
+    printf("  p1:");
+    for(i=0; i<3;i++) printf(" %.3lf", tri_vert1[i]);
+    printf("  p2:");
+    for(i=0; i<3;i++) printf(" %.3lf", tri_vert2[i]);
+  }
+#endif
+
+  //find vectors for two edges sharing vert0 
+  SUB(edge1, tri_vert1, tri_vert0);
+  SUB(edge2, tri_vert2, tri_vert0);
+
+  //begin calculating determinant - also used to calculate U parameter
+  CROSS(pvec, ray_direction, edge2);
+
+  //if determinant is near zero, ray lies in plane of triangle 
+  det = DOT(edge1, pvec);
+
+  //the non-culling branch
+  if (det > -RTI_EPSILON && det < RTI_EPSILON){
+    RTI_DBG(0,0.0);
+    return 0;
+  }
+  inv_det = 1.0 / det;
+
+  //calculate distance from vert0 to ray origin */
+  SUB(tvec, ray_origin, tri_vert0);
+
+  //calculate U parameter and test bounds
+  uu = DOT(tvec, pvec) * inv_det;
+  if (uu < 0.0 || uu > 1.0){
+    RTI_DBG(0,0.0);
+    return 0;
+  }
+
+  //prepare to test V parameter
+  CROSS(qvec, tvec, edge1);
+
+  //calculate V parameter and test bounds
+  vv = DOT(ray_direction, qvec) * inv_det;
+  if (vv < 0.0 || uu + vv > 1.0){
+    RTI_DBG(0,0.0);
+    return 0;
+  }
+
+  //calculate t, ray intersects triangle
+  tt = DOT(edge2, qvec) * inv_det;
+
+  if(t) *t=tt;
+  if(u) *u=uu;
+  if(v) *v=vv;
+
+  RTI_DBG(1,tt);
+  return 1;
+
+  #undef RTI_DEBUG
+  #undef RTI_DBG
+  #undef CROSS
+  #undef DOT
+  #undef SUB
+}
+
+
+
+
+/**
+ * \ingroup PrivateGeometricRelations
+ * \brief Internal function for determining whether a point is located within an element
+ *
+ * \description
+ * 
+ *   This internal function determines whether a point resides inside of an element
+ *   or not. The function requires a number of inputs, including information about
+ *   the mesh's faces and vertex coordinates (which can be obtained with
+ *   fc_getMeshCoordsPtr() and fc_getMeshFaceConnsPtr()).
+ *
+ *   This function obtains all of the element's faces and then breaks each face into
+ *   a collection of triangles. A ray-triangle intersection computation is performed
+ *   with each triangle. If the point is inside the element, there will only be
+ *   one intersection with a triangle. This function tries to detect when an
+ *   intersection point happens to fall on the edge between two triangles (by verifying
+ *   the distance is the same). In the case where the input point is lies in one
+ *   of the element's faces, it is counted as being contained within the element.
+ *
+ *   note: it is possible for multiple elements to contain an element if 
+ *         (a) the elements overlap, or (b) the
+ *         point lies on a vertex or face the two elements have in common.
+ *
+ * \modifications
+ *    - 03/20/2008 CDU Initial version
+ *
+ */
+FC_ReturnCode  _fc_doesElementContainPoint(
+   FC_Mesh mesh,    /**< input - The mesh this element belong to */
+   int element_id,  /**< input - The id of the mesh element being examined */
+   double point[3], /**< input - The xyz coordinate being evaluated */
+   int dim,         /**< input - The dimension of the coordinates (must be 3) */
+   int max_num_vert_per_face, /**< input - maximum number of vertices a face can have */
+   int *num_vert_per_face,    /**< input - number of vertices each face has */
+   int *face_conns,           /**< input - face connectivity list */
+   double *vert_coords,       /**< input - coordinates for each vertex */
+   int *hit_type              /**< output - Result (0=does not contain, 1=containts, 2=contains, but point is on a face) */
+){
+
+  int i,j;
+  int num_faces;
+  int *face_ids;
+
+
+  int found_positive_hit, found_negative_hit;
+  double t_val_positive, t_val_negative;
+  int face_offset;
+  double t;
+  int hit;
+
+  //In theory, we should do the test multiple times with randomly
+  //generated directions. This helps weed out corner cases where
+  //an edge/vertex happens to be in just the wrong spot. However, if we
+  //compare the distance of all he intersections, and consider t=0.0 to
+  //be a special case, I believe we can live with a single direction.
+  double ray_direction[3] = {1.0, 0.0, 0.0};
+
+
+  FC_ReturnCode rc;
+
+  //Check inputs. Note: Mesh is checked in following step
+  if(  (element_id<0) || (!point) || (!ray_direction) || 
+       (max_num_vert_per_face<=0) || (!num_vert_per_face) ||
+       (!vert_coords) || (!hit_type) ) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  if(dim!=3){
+    fc_printfErrorMessage("Containment functions only work with 3-Dimensional data");
+    return FC_INPUT_ERROR;
+  }
+
+  *hit_type = 0; //clear the output
+
+ 
+  //Need to get all the faces for this element
+  rc = fc_getMeshEntityChildren(mesh, 
+				FC_AT_ELEMENT, element_id, //Parent: element 
+				FC_AT_FACE,                //Children: faces
+				&num_faces, &face_ids);
+  if(rc!=FC_SUCCESS) return rc;
+
+  found_positive_hit = found_negative_hit = 0;
+
+  //Scan through all faces of element
+  for(i=0; (i<num_faces); i++){
+
+    if(num_vert_per_face[ face_ids[i] ] < 3){
+      fc_printfErrorMessage("Element face must have at least 3 vertices for hit test");
+      free(face_ids);
+      return FC_ERROR;
+    }
+
+    face_offset = max_num_vert_per_face * face_ids[i]; //Shorthand
+
+    //Break each face into a set of 1 or more triangles
+    for(j=0; (j<num_vert_per_face[ face_ids[i] ] - 2); j++){
+      hit =  fc_getIntersectionBetweenRayAndTriangle(
+		     point, //Point is ray's origin
+		     ray_direction,
+                     &vert_coords[ dim * face_conns[ face_offset + 0   ] ], //triangle point 0
+		     &vert_coords[ dim * face_conns[ face_offset + j+1 ] ], //triangle point 1
+		     &vert_coords[ dim * face_conns[ face_offset + j+2 ] ], //triangle point 2
+		     &t,NULL,NULL); //Only care about t, the distance to triangle
+
+      if(hit){
+
+	if((fc_eqd(t,0.0)) || (fc_eqd(t,-0.0)) ){
+	  *hit_type = 2; //point is on a face
+	  free(face_ids);
+	  return FC_SUCCESS;
+
+	} else if (fc_gtd(t,0.0)){
+
+	  if(found_positive_hit){
+
+	    if(t!=t_val_positive){
+	      //Hit more than one place. Bail out.
+	      free(face_ids);
+	      return FC_SUCCESS;
+	    }
+	    //Otherwise, this must have been a common edge/vertex, keep going
+	  } else {
+	    //First unique hit, record distance so we can count intersections
+	    t_val_positive = t;
+	    found_positive_hit = 1;
+	  }
+	} else { //negative hit
+	  
+	  if(found_negative_hit){
+	    if(t!=t_val_negative){
+	      //Hit more than one place. Bail out.
+	      free(face_ids);
+	      return FC_SUCCESS;
+	    }
+	    //Otherwise, this must have been a common edge/vertex, keep going
+	  } else {
+	    //First unique hit, record distance so we can count intersecrions
+	    t_val_negative = t;
+	    found_negative_hit = 1;
+	  }
+	}
+      }
+    }
+  }
+  *hit_type = found_positive_hit && found_negative_hit;
+  free(face_ids);
+  return FC_SUCCESS;
+
+}
+
+/**
+ * \ingroup GeometricRelations
+ * \brief Determines whether a point is located within an element or not
+ *
+ * \description
+ * 
+ *   This function determines whether a point resides inside, outside, or exactly
+ *   on the boundary of an element. Internally this function breaks an element's
+ *   faces into a set of triangles and does ray-triangle intersections to
+ *   determine whether the element contains the point.
+ *
+ *   If multiple elements are being analyzed for a single point, it is 
+ *   more efficient to utilize the fc_getElementsThatContainPoint() or
+ *   fc_getElementsFromSubsetThatContainPoint() functions.
+ *   
+ *
+ * \modifications
+ *    - 03/20/2008 CDU Initial version
+ *
+ */
+FC_ReturnCode fc_doesElementContainPoint(
+  FC_Mesh m,        /**< input - The mesh that the element belongs to */
+  int element_id,   /**< input - The id of the element in this mesh that is to be examined */ 
+  double *point,    /**< input - The xyz coordinate being evaluated */
+  int *contain_type /**< output - Result (0=does not contain, 1=contains, 2=contains, but point is on surface) */
+){
+
+  FC_ReturnCode rc;
+  FC_ElementType elem_type;
+  int     dim, num_element, vert_per_elem;
+  int    *num_vert_per_face; //ro
+  int     max_num_vert_per_face;
+  int    *face_conns;  //ro
+  double *vert_coords; //ro
+
+  if((!point) || (!contain_type)){
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  rc = fc_getMeshInfo(m, NULL, &dim, NULL, &num_element, &elem_type); 
+  if(rc!=FC_SUCCESS) return rc;
+
+  if((dim!=3) || (elem_type<FC_ET_TET)){
+    fc_printfErrorMessage("Containment functions only work with 3D coordinates and elements>FC_ET_TRIANGLE");
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  if((element_id<0)||(element_id>=num_element)){
+    fc_printfErrorMessage("%s: Element id %d is out of bounds for this mesh, which has %d elements", 
+			  fc_getReturnCodeText(FC_INPUT_ERROR), element_id, num_element);
+    return FC_INPUT_ERROR;
+  }
+
+  vert_per_elem = fc_getElementTypeNumVertex(elem_type);
+
+  rc = fc_getMeshCoordsPtr(m, &vert_coords);
+  if(rc!=FC_SUCCESS) return rc;
+
+  rc = fc_getMeshFaceConnsPtr(m, &num_vert_per_face, &max_num_vert_per_face, &face_conns);
+  if(rc!=FC_SUCCESS) return rc;
+
+
+  //Test an element
+  rc = _fc_doesElementContainPoint(m, element_id, point, dim, 
+		      max_num_vert_per_face, num_vert_per_face, 
+		      face_conns, vert_coords, contain_type);
+
+  return rc;
+ 
+
+}
+
+
+
+/**
+ * \ingroup GeometricRelations
+ * \brief Determines which elements (individually) enclose a point
+ *
+ * \description
+ * 
+ *   This function determines if a point resides inside or exactly
+ *   on the boundary of each of the input elements. 
+ *
+ *   note: Geometry must be 3-dimensional
+ *   note: Elements must be tets or higher
+ *
+ *   If only a single element is being examined, it may be easier to use
+ *   the fc_doesElementContainPoint() function.
+ *
+ *   If a subset of the elements of interest is available, it may be more 
+ *   convenient to use fc_getElementsFromSubsetThatContainPoint().
+ *
+ * \modifications
+ *    - 03/20/2008 CDU Initial version
+ *
+ */
+FC_ReturnCode fc_getElementsThatContainPoint(
+  FC_Mesh m,          /**< input - The mesh that the element belongs to */
+  int *element_mask,  /**< input - A mask for the mesh that specifiy which elements to consider (NULL=all) */
+  double point[3],    /**< input - The xyz coordinate being evaluated */
+  int *num_elem_ids,  /**< output - The number of elements that were found to contain the point */
+  int **elem_ids      /**< output - The IDs of the elements that were found to contain the point */
+){
+ 
+  int i;
+  FC_ReturnCode rc;
+  FC_ElementType elem_type;
+  int     dim, num_element, vert_per_elem;
+  int    *num_vert_per_face; //ro
+  int     max_num_vert_per_face;
+  int    *face_conns;  //ro
+  double *vert_coords; //ro
+
+  int hit_type;
+
+  int  res_num_elem_ids;
+  int *res_elem_ids;
+
+  if(!point || !num_elem_ids){
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  rc = fc_getMeshInfo(m, NULL, &dim, NULL, &num_element, &elem_type); 
+  if(rc!=FC_SUCCESS) return rc;
+
+  if((dim!=3) || (elem_type<FC_ET_TET)){
+    fc_printfErrorMessage("Containment functions only work with 3D coordinates and elements>FC_ET_TRIANGLE");
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  vert_per_elem = fc_getElementTypeNumVertex(elem_type);
+
+  rc = fc_getMeshCoordsPtr(m, &vert_coords);
+  if(rc!=FC_SUCCESS) return rc;
+
+  rc = fc_getMeshFaceConnsPtr(m, &num_vert_per_face, &max_num_vert_per_face, &face_conns);
+  if(rc!=FC_SUCCESS) return rc;
+
+
+  //Allocate space for largest possible result
+  res_num_elem_ids=0;
+  res_elem_ids=(int *)malloc(num_element*sizeof(int));
+
+
+  //Scan all elements and see which ones we fit in
+  for(i=0; i<num_element; i++){
+
+    if(element_mask && (!element_mask[i])) continue; //Bail out if 
+
+    //Test an element
+    rc = _fc_doesElementContainPoint(m, i, point, dim, 
+			max_num_vert_per_face, num_vert_per_face, 
+			face_conns, vert_coords, &hit_type);
+		   
+    if(rc!=FC_SUCCESS){      
+      free(res_elem_ids);
+      return rc;
+    }
+
+    //Add this element to the list if it contains point
+    if(hit_type>0){
+      res_elem_ids[res_num_elem_ids++] = i;
+    }
+  }
+
+  //Pass the results back to the user
+  if(res_num_elem_ids){
+    if(elem_ids) //Only pass back if user asks
+      *elem_ids = realloc(res_elem_ids, res_num_elem_ids*sizeof(int));
+  } else {
+    //No results, free by hand
+    if(elem_ids)
+      *elem_ids = NULL;
+    free(res_elem_ids); 
+  }
+  *num_elem_ids = res_num_elem_ids;
+
+  return FC_SUCCESS;
+}
+
+/**
+ * \ingroup GeometricRelations
+ * \brief Determines which elements (individually) enclose a point
+ *
+ * \description
+ * 
+ *   This function determines if a point resides inside or exactly
+ *   ont the boundary of each input element listed in a subset.
+ *
+ *   note: Geometry must be 3-dimensional
+ *   note: Elements must be tets or higher
+ *
+ *   If only a single element is being examined, it may be easier to use
+ *   the fc_doesElementContainPoint() function.
+ *
+ *
+ * \modifications
+ *    - 03/20/2008 CDU Initial version
+ *
+ */
+FC_ReturnCode fc_getElementsThatContainPointFromSubset(
+  FC_Subset subset,  /**< input - The subset of elements that need to be inspected */
+  double point[3],   /**< input - The xyz coordinate being evaluated */
+  int *num_elem_ids, /**< output - The number of elements that were found to contain the point */ 
+  int **elem_ids     /**< output - The IDs of the elements that were found to contain the point */
+){
+
+  FC_ReturnCode rc;
+  FC_Mesh m;
+  FC_AssociationType assoc;
+  int  num_subset_members;
+  int  mask_length;
+  int *mask;
+  int  tmp_num_elem_ids;
+  int *tmp_elem_ids;
+
+  if((!point)||(!num_elem_ids)){
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  rc = fc_getSubsetInfo(subset, &num_subset_members, NULL, &assoc);
+  if(rc!=FC_SUCCESS) return rc;
+
+
+  //Set default return values
+  *num_elem_ids = 0;
+  if(elem_ids) *elem_ids=NULL;
+
+  if(assoc!=FC_AT_ELEMENT){
+    fc_printfErrorMessage("Association type must be FC_AT_ELEMENT");
+    return FC_INPUT_ERROR;
+  }
+
+  if(!num_subset_members){
+    //No items in subset, result will be empty
+    return FC_SUCCESS;
+  }    
+
+  rc = fc_getMeshFromSubset(subset, &m);
+  if(rc!=FC_SUCCESS) return rc;
+
+  rc = fc_getSubsetMembersAsMask(subset, &mask_length, &mask);
+  if(rc!=FC_SUCCESS) return rc;
+  
+
+  rc = fc_getElementsThatContainPoint(m, mask, point, &tmp_num_elem_ids, &tmp_elem_ids);
+  free(mask);
+  if(rc!=FC_SUCCESS) return rc;
+  
+  //Pass back to user
+  *num_elem_ids = tmp_num_elem_ids;
+  if(elem_ids) *elem_ids = tmp_elem_ids;
+
+  return FC_SUCCESS;
+}

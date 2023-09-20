@@ -108,9 +108,14 @@ START_TEST(sia_helpers)
   // test lookup = binary search algrithm (hack an sia)
   sia.numVal = numVal;
   sia.maxNumVal = numVal;
+  sia.nextTicket = numVal;
   sia.vals = malloc(numVal*sizeof(int));
+  sia.tickets = malloc(numVal*sizeof(int));
   fail_unless(sia.vals != NULL, "abort: memory allocation failure");
+  fail_unless(sia.tickets != NULL, "abort: memory allocation failure");
   memcpy(sia.vals, sortedVals, numVal*sizeof(int));
+  for(i=0; i<numVal; i++)
+    sia.tickets[i]=i;
   for (i = 0; i < numVal; i++) {
     rc = _fc_lookupIntInSortedIntArray(&sia, sortedVals[i], &flag, &idx);
     fail_unless(rc == FC_SUCCESS, "failed to get index");
@@ -199,18 +204,23 @@ START_TEST(sia_helpers)
 
   // cleanup
   free(sia.vals);
+  free(sia.tickets);
 
   // test border cases: empty arrays w & w/o vals=NULL
   // & also that growing works
   sia.numVal = 0;
   sia.maxNumVal = 0;
+  sia.nextTicket = 36;
   sia.vals = NULL;
+  sia.tickets = NULL;
   rc = _fc_deleteEntryFromSortedIntArray(&sia, 0);
   fail_unless(rc != FC_SUCCESS, "should fail to delete from empty");
   rc = _fc_addEntryToSortedIntArray(&sia, 0, val);
   fail_unless(rc == FC_SUCCESS, "should add to empty");
   fail_unless(sia.numVal == 1, "mismatch of numVal");
   fail_unless(sia.vals[0] = val, "mismatch of vals");
+  fail_unless(sia.tickets[0] == 36, "insert ticket didn't match");
+  fail_unless(sia.nextTicket == 37, "current ticket didn't update");
   for (i = 0; i < 10; i++) { // add a bunch to test growing
     rc = _fc_addEntryToSortedIntArray(&sia, 0, val);
     fail_unless(rc == FC_SUCCESS, "should add to empty");
@@ -227,6 +237,7 @@ START_TEST(sia_helpers)
 
   // cleanup again
   free(sia.vals);
+  free(sia.tickets);
 }
 END_TEST
 
@@ -234,64 +245,85 @@ START_TEST(sia_valid)
 {
   FC_SortedIntArray sia;
   int flag;
-  int numVal = 7, sortedVals[7] = { -9, -2, 0, 3, 6, 11, 14 };
-
+  int numVal = 7;
+  int sortedVals[7] = { -9, -2, 0, 3, 6, 11, 14 };
+  int insertIDs[7]  = {  6,  5, 4, 3, 2,  1,  0 }; //Reverse order
+  int next_ticket = 7;
   // hack the sia & test
 
   // valid cases
   // all zeros 
   sia.numVal = 0;
   sia.maxNumVal = 0;
+  sia.nextTicket = 0;
   sia.vals = NULL;
+  sia.tickets = NULL;
   flag = fc_isSortedIntArrayValid(&sia);
   fail_unless(flag == 1, "should return true");
   // no entries but has space
   sia.numVal = 0;
   sia.maxNumVal = numVal;
+  sia.nextTicket = next_ticket;
   sia.vals = sortedVals;
+  sia.tickets = insertIDs;
   flag = fc_isSortedIntArrayValid(&sia);
   fail_unless(flag == 1, "should return true");
   // has same number of entries and space
   sia.numVal = numVal;
   sia.maxNumVal = numVal;
+  sia.nextTicket = next_ticket;
   sia.vals = sortedVals;
+  sia.tickets = insertIDs;
   flag = fc_isSortedIntArrayValid(&sia);
   fail_unless(flag == 1, "should return true");
   // has fewer entires than space
   sia.numVal = 1;
   sia.maxNumVal = numVal;
+  sia.nextTicket = next_ticket;
   sia.vals = sortedVals;
+  sia.tickets = insertIDs;
   flag = fc_isSortedIntArrayValid(&sia);
+  fail_unless(flag == 1, "should return true");
   
   // invalid cases
   // numVal is negative
   sia.numVal = -1;
   sia.maxNumVal = 0;
+  sia.nextTicket = 0;
   sia.vals = NULL;
+  sia.tickets = NULL;
   flag = fc_isSortedIntArrayValid(&sia);
   fail_unless(flag == 0, "should return false");
   // maxNumVal is negative
   sia.numVal = 0;
   sia.maxNumVal = -1;
+  sia.nextTicket = 0;
   sia.vals = NULL;
+  sia.tickets = NULL;
   flag = fc_isSortedIntArrayValid(&sia);
   fail_unless(flag == 0, "should return false");
   // space is zero, but there appears to be something there
   sia.numVal = 0;
   sia.maxNumVal = 0;
+  sia.nextTicket = 0;
   sia.vals = sortedVals;
+  sia.tickets = insertIDs;
   flag = fc_isSortedIntArrayValid(&sia);
   fail_unless(flag == 0, "should return false");
   // there should be something there, but there is not
   sia.numVal = numVal;
   sia.maxNumVal = numVal;
+  sia.nextTicket = next_ticket;
   sia.vals = NULL;
+  sia.tickets = NULL;
   flag = fc_isSortedIntArrayValid(&sia);
   fail_unless(flag == 0, "should return false");
   // there are more entries than space
   sia.numVal = numVal+1;
   sia.maxNumVal = numVal;
+  sia.nextTicket = next_ticket;
   sia.vals = sortedVals;
+  sia.tickets = insertIDs;
   flag = fc_isSortedIntArrayValid(&sia);
   fail_unless(flag == 0, "should return false");
 }
@@ -366,6 +398,15 @@ START_TEST(sia_basic)
   fail_unless(!memcmp(sia.vals, sortedVals, numVal*sizeof(int)),
 	      "queries alterned contents");
 
+  //Test getting the values back in inserted order
+  rc = fc_getSortedIntArrayValuesInInsertOrder(&sia, &temp_numVal, &temp_vals);
+  fail_unless(rc == FC_SUCCESS, "should find values");
+  fail_unless(temp_numVal == numVal, "should have had same number of insert items");
+  fail_unless(!memcmp(temp_vals, unsortedVals, numVal*sizeof(int)), "results differ when getting vals in insert order");
+  free(temp_vals);
+
+
+
   // test try to create again (add same ones)
   for (i = 0; i < numVal; i++) {
     count = fc_addIntToSortedIntArray(&sia, unsortedVals[i]);
@@ -375,20 +416,48 @@ START_TEST(sia_basic)
   fail_unless(!memcmp(sia.vals, sortedVals, numVal*sizeof(int)),
 	      "recreating went wrong");
 
+  //Should still have same insert order
+  rc = fc_getSortedIntArrayValuesInInsertOrder(&sia, &temp_numVal, &temp_vals);
+  fail_unless(rc == FC_SUCCESS, "should find values");
+  fail_unless(temp_numVal == numVal, "should have had same number of insert items");
+  fail_unless(!memcmp(temp_vals, unsortedVals, numVal*sizeof(int)), "results differ from getting vals in insert order");
+  free(temp_vals);
+
+
   // test delete single int
   for (i = 0; i < numNoVal; i++) {
     count = fc_deleteIntFromSortedIntArray(&sia, valsNotInArray[i]);
     fail_unless(count == 0, "should not delete not there vals");
   }
   fail_unless(sia.numVal == numVal, "recreating went wrong");
+  //Should still have same insert order
+  rc = fc_getSortedIntArrayValuesInInsertOrder(&sia, &temp_numVal, &temp_vals);
+  fail_unless(rc == FC_SUCCESS, "should find values");
+  fail_unless(temp_numVal == numVal, "should have had same number of insert items");
+  fail_unless(!memcmp(temp_vals, unsortedVals, numVal*sizeof(int)), "results differ from getting vals in insert order");
+  free(temp_vals);
+
   for (i = 0; i < numVal; i++) {
+
     count = fc_deleteIntFromSortedIntArray(&sia, unsortedVals[i]);
     fail_unless(count == 1, "should delete vals");
     fail_unless(sia.numVal == numVal-i-1, "didn't delete vals");
+
+    //Should still have same insert order, just with the first n vals removed
+    rc = fc_getSortedIntArrayValuesInInsertOrder(&sia, &temp_numVal, &temp_vals);
+    fail_unless(rc == FC_SUCCESS, "should find values");
+    fail_unless(temp_numVal == numVal-(i+1), "should have had same number of insert items");
+    if(i!=numVal-1){
+      fail_unless(!memcmp(temp_vals, &unsortedVals[i+1], (numVal-(i+1))*sizeof(int)), "results differ from getting vals in insert order");
+    } else {
+      fail_unless(temp_vals == NULL, "all deleted should have null unsorted list");
+    }
+    free(temp_vals);
   }
   fail_unless(sia.numVal == 0, "should be empty");
   fail_unless(sia.maxNumVal != 0, "but still have space");
   fail_unless(sia.vals != NULL, "but still have space");
+  fail_unless(sia.tickets != NULL, "but still have space");
 
   // test query and delete of empty, but not NULL sia
   count = fc_deleteIntFromSortedIntArray(&sia, 5);
@@ -489,8 +558,20 @@ START_TEST(sia_basic)
   // fc_printSortedIntArray
   rc = fc_printSortedIntArray(NULL);
   fail_unless(rc != FC_SUCCESS, "should fail for null input");
+  // fc_getSortedIntArrayValuesInInsertOrder
+  rc = fc_getSortedIntArrayValuesInInsertOrder(NULL, &temp_numVal, &temp_vals);
+  fail_unless(rc != FC_SUCCESS, "should fail on null input");
+  fail_unless(temp_numVal == -1, "fail should return nulls");
+  fail_unless(temp_vals == NULL, "fail should return nulls");
+  rc = fc_getSortedIntArrayValuesInInsertOrder(&sia, NULL, &temp_vals);
+  fail_unless(rc != FC_SUCCESS, "should fail for null input");
+  fail_unless(temp_vals == NULL, "fail should return nulls");
+  rc = fc_getSortedIntArrayValuesInInsertOrder(&sia, &temp_numVal, NULL);
+  fail_unless(rc != FC_SUCCESS, "should fail for null input");
+  fail_unless(temp_numVal == -1, "fail should return nulls");
   // fc_freeSortedIntArray
   fc_freeSortedIntArray(NULL);
+
 
   // test freeing 
   fc_freeSortedIntArray(&sia);
@@ -506,6 +587,7 @@ START_TEST(sia_copy)
   int i;
   FC_SortedIntArray sia_src, sia_dest;
   int numVal = 7, sortedVals[7] = { -9, -2, 0, 3, 6, 11, 14 };
+  int temp_numVal, *temp_vals;
 
   // test copy of empty & NULL
   rc = fc_initSortedIntArray(&sia_src);
@@ -528,6 +610,17 @@ START_TEST(sia_copy)
 	      "mismatch of numVal & maxNumVal");
   fail_unless(!memcmp(sia_dest.vals, sortedVals, numVal*sizeof(int)), 
 	      "mismatch of vals");
+  //Make sure the insert order is still ok on both dest and src
+  rc = fc_getSortedIntArrayValuesInInsertOrder(&sia_dest, &temp_numVal, &temp_vals);
+  fail_unless(rc == FC_SUCCESS, "Failed to get in insert order");
+  fail_unless(temp_numVal == numVal, "should have had same number of insert items");
+  fail_unless(!memcmp(temp_vals, sortedVals, numVal*sizeof(int)), "results differ when getting vals in insert order");
+  free(temp_vals);
+  rc = fc_getSortedIntArrayValuesInInsertOrder(&sia_src, &temp_numVal, &temp_vals);
+  fail_unless(rc == FC_SUCCESS, "Failed to get in insert order");
+  fail_unless(temp_numVal == numVal, "should have had same number of insert items");
+  fail_unless(!memcmp(temp_vals, sortedVals, numVal*sizeof(int)), "results differ when getting vals in insert order");
+  free(temp_vals);
   fc_freeSortedIntArray(&sia_dest);
 
   // test copy of empty & not NULL
@@ -560,6 +653,7 @@ START_TEST(sia_squeeze)
   // do not have a multiple of 2 so can test squeeze
   int numVal = 7, sortedVals[7] = { -9, -2, 0, 3, 6, 11, 14 };
 
+
   // test squeeze of empty & NULL
   rc = fc_initSortedIntArray(&sia);
   fail_unless(rc == FC_SUCCESS, "abort: failed to init sia");
@@ -568,6 +662,8 @@ START_TEST(sia_squeeze)
   fail_unless(sia.numVal == 0, "mismatch of numVal");
   fail_unless(sia.maxNumVal == 0, "mismatch of maxNumVal");
   fail_unless(sia.vals == NULL, "mismatch of vals");
+  fail_unless(sia.tickets == NULL, "mismatch of tickets");
+
 
   // test squeeze of non empty & extra room
   for (i = 0; i < numVal; i++) {
@@ -636,7 +732,7 @@ START_TEST(sia_multiadd)
   fail_unless(sia.numVal == numVal, "mismatch of numVal");
   fail_unless(!memcmp(sia.vals, sortedVals, numVal*sizeof(int)),
 	      "sorted wrong");
-  // readd the same ones
+  // read the same ones
   count = fc_addIntArrayToSortedIntArray(&sia, numVal, unsortedVals, 0);
   fail_unless(count == 0, "should not add any already there");
   fail_unless(sia.numVal == numVal, "should not change numVal");
@@ -743,6 +839,7 @@ START_TEST(sia_pop)
   FC_SortedIntArray sia, emptySia;
   int numVal = 7, sortedVals[7] = { -9, -2, 0, 3, 6, 11, 14 };
   int temp_val;
+  int temp_numVal, *temp_vals; 
 
   // setup
   rc = fc_initSortedIntArray(&sia);
@@ -786,11 +883,89 @@ START_TEST(sia_pop)
   fail_unless(sia.numVal = numVal-2, "pop should decrease numVal");
   fail_unless(!memcmp(sia.vals, sortedVals+1, sia.numVal*sizeof(int)),
 	      "mismatch of vals");
+  
+  //Check and make sure insert order is still correct
+  rc = fc_getSortedIntArrayValuesInInsertOrder(&sia, &temp_numVal, &temp_vals);
+  fail_unless(rc == FC_SUCCESS, "failed to get vals in insert order");
+  fail_unless(temp_numVal == numVal-2, "Wrong number of vals");
+  fail_unless(!memcmp(&temp_vals[0], &sortedVals[1], (numVal-2)*sizeof(int)), "unsorted vals don't line up");
+  free(temp_vals);
 
   // cleanup
   fc_freeSortedIntArray(&sia);
 }
 END_TEST
+
+START_TEST(sia_insert_order)
+{
+  FC_ReturnCode rc;
+  int count;
+  FC_SortedIntArray sia, emptySia;
+  int numVal = 7, sortedVals[7] = { -9, -2, 0, 3, 6, 11, 14 };
+  int temp_val;
+  int temp_numVal, *temp_vals; 
+
+  int i,j;
+
+  typedef struct {
+    int num;
+    char op;
+    int vals[10];
+    int exp_num; //Expected number of sorted vals
+    int exp_sort[20]; //Expected sorted vals
+    int exp_insrt[20]; //Expected vals in insert order
+  } commands_t;
+
+
+  commands_t cmd[] = 
+    { { 3, '+', {  0,2,4 },     3, {0,2,4},                 {0,2,4} },
+      { 3, '+', {  1,3,5 },     6, {0,1,2,3,4,5},           {0,2,4,1,3,5} }, 
+      { 3, '+', { 10,6,8 },     9, {0,1,2,3,4,5,6,8,10},    {0,2,4,1,3,5,10,6,8} },
+      { 3, '+', {  9,6,7 },    11, {0,1,2,3,4,5,6,7,8,9,10},{0,2,4,1,3,5,10,6,8,9,7} }, //note: duplicate 6
+      { 3, '-', {  2,0,7 },     8, {1,3,4,5,6,8,9,10},      {4,1,3,5,10,6,8,9,7} },
+      { 5, '-', { 1,5,8,10,9 }, 3, {3,4,6},                 {4,3,6} },
+      { 5, '+', { 1,8,8,7,1 },  6, {1,3,4,6,7,8},           {4,3,6,1,8,7} },
+      { 0, 'x', {},             0, {}, {}}
+    };
+
+  rc = fc_initSortedIntArray(&sia);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to init sia");
+
+  for(i=0; cmd[i].num; i++){
+    switch(cmd[i].op){
+    case '+':
+      rc = fc_addIntArrayToSortedIntArray(&sia, cmd[i].num, cmd[i].vals,0);
+      break;
+    case '-':
+      for(j=0; j<cmd[i].num; j++)
+	rc = fc_deleteIntFromSortedIntArray(&sia, cmd[i].vals[j]);
+      break; 
+    default:
+      fail_unless(0, "unexpected state in case statement");
+    }
+
+    //Check sorted version
+    rc = fc_getSortedIntArrayValues(&sia, &temp_numVal, &temp_vals);
+    fail_unless(rc == FC_SUCCESS, "failed to get values from sorted int array");
+    fail_unless(temp_numVal == cmd[i].exp_num, "Got wrong number of values");
+    fail_unless(!memcmp(temp_vals, cmd[i].exp_sort, cmd[i].exp_num*sizeof(int)), "Got wrong sorted values");
+    free(temp_vals);
+
+    //Check unsorted version 
+    rc = fc_getSortedIntArrayValuesInInsertOrder(&sia, &temp_numVal, &temp_vals);
+    fail_unless(rc == FC_SUCCESS, "failed to get values from sorted int array w/ insert order");
+    fail_unless(temp_numVal == cmd[i].exp_num, "Got wrong number of values for insert order");
+    fail_unless(!memcmp(temp_vals, cmd[i].exp_insrt, cmd[i].exp_num*sizeof(int)), "Got wrong values for insert order");
+    free(temp_vals);
+  }
+
+  fc_freeSortedIntArray(&sia);
+  
+
+}
+END_TEST
+
+
 
 // sorted blob arrays
 
@@ -1488,6 +1663,8 @@ Suite *storage_suite(void)
   tcase_add_test(tc_sortedIntArrays, sia_squeeze);
   tcase_add_test(tc_sortedIntArrays, sia_multiadd);
   tcase_add_test(tc_sortedIntArrays, sia_pop);
+  tcase_add_test(tc_sortedIntArrays, sia_insert_order);
+
   
   suite_add_tcase(suite, tc_sortedBlobArrays);
   tcase_add_test(tc_sortedBlobArrays, sba_helpers);

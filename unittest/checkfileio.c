@@ -1534,21 +1534,21 @@ END_TEST
 START_TEST(exo_node_set)
 {
   FC_ReturnCode rc;
-  int i, j, k, m;
+  int i, j, k, m, mm;
   int temp_numMesh, temp_numSubset, temp_numMember, *temp_members;
   FC_Dataset dataset;
   FC_Mesh mesh, *temp_meshes;
   FC_Subset subset, *temp_subsets;
   FC_AssociationType temp_assoc;
   char* ds_name = "dataset";
-  char* sub_names[2] = { "First 5 verts", "random verts" };
+  char* sub_names[3] = { "First 5 verts", "random verts", "empty" };
   char* temp_name;
-  int numMembers[2] = { 5, 7 };
-  int members[2][7] = { { 0, 1, 2, 3, 4 }, { 2, 7, 11, 13, 21, 23, 25 } };
+  int numMembers[3] = { 5, 7, 0 };
+  int members[3][7] = { { 0, 1, 2, 3, 4 }, { 2, 7, 11, 13, 21, 23, 25 }, {}  };
 
   // Test writing single mesh or two meshes with 1 or two node sets
   for (i = 1; i <= 2; i++) { // number of meshes
-    for (j = 1; j <= 2; j++) { // number of nodeset per mesh
+    for (j = 1; j <= 3; j++) { // number of nodeset per mesh
       
       // Create dataset, meshes & subset
       rc = fc_createDataset(ds_name, &dataset);
@@ -1560,9 +1560,11 @@ START_TEST(exo_node_set)
 	for (m = 0; m < j; m++) {
 	  rc = fc_createSubset(mesh, sub_names[m], FC_AT_VERTEX, &subset);
 	  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset");
-	  rc = fc_addArrayMembersToSubset(subset, numMembers[m], members[m]);
-	  fail_unless(rc == FC_SUCCESS, 
-		      "abort: failed to add members to subset");
+	  if (numMembers[m] > 0){
+	    rc = fc_addArrayMembersToSubset(subset, numMembers[m], members[m]);
+	    fail_unless(rc == FC_SUCCESS, 
+			"abort: failed to add members to subset");
+	  }
 	}
       }
 
@@ -1580,30 +1582,48 @@ START_TEST(exo_node_set)
       rc = fc_getMeshes(dataset, &temp_numMesh, &temp_meshes);
       fail_unless(temp_numMesh == i, "mismatch of numMesh");
       for (k = 0; k < i; k++) {
+	int found[3] = {0,0,0};
 	rc = fc_getSubsets(temp_meshes[k], &temp_numSubset, &temp_subsets);
-	fail_unless(temp_numSubset == j, "mismatch of numSubset");
+	if (j == 3){
+	  //empty subsets put on all meshes and not merged
+	  fail_unless(temp_numSubset = (j-1)+temp_numMesh, "mismatch of num subset");
+	} else {
+	  fail_unless(temp_numSubset = j, "mismatch of num subset");
+	}
 	// check subsets
-	for (m = 0; m < j; m++) {
+	for (m = 0; m < temp_numSubset; m++) {
 	  subset = temp_subsets[m];
 	  rc = fc_getSubsetName(subset, &temp_name);
 	  fail_unless(rc == FC_SUCCESS, "should get subset name");
-          fail_unless(!strcmp(temp_name, sub_names[m]), "subset name mismatch");
-	  //token_name = fc_replaceChars(sub_names[m], ' ', '_');
-	  //fail_unless(!strcmp(temp_name, token_name), "subset name mismatch");
-	  //free(token_name);
+	  for (mm = 0; mm < 3; mm++){
+	    if (!strcmp(temp_name, sub_names[mm])){
+	      found[mm]++;
+	      rc = fc_getSubsetInfo(subset, &temp_numMember, NULL, &temp_assoc);
+	      fail_unless(rc == FC_SUCCESS, "failed to get subset info");
+	      fail_unless(temp_numMember == numMembers[mm], 
+			  "mismatch of numMember");
+	      fail_unless(temp_assoc == FC_AT_VERTEX, "mismatch of assoc");
+	      if (temp_numMember > 0){
+		rc = fc_getSubsetMembersAsArray(subset, &temp_numMember,
+						&temp_members);
+		fail_unless(rc == FC_SUCCESS, "failed to get members");
+		fail_unless(!memcmp(temp_members, members[mm],
+				    numMembers[mm]*sizeof(int)), "mismatch of members");
+		free(temp_members);
+	      }
+	    }
+	  }
 	  free(temp_name);
-	  rc = fc_getSubsetInfo(subset, &temp_numMember, NULL, &temp_assoc);
-	  fail_unless(rc == FC_SUCCESS, "failed to get subset info");
-	  fail_unless(temp_numMember == numMembers[m], 
-		      "mismatch of numMember");
-	  fail_unless(temp_assoc == FC_AT_VERTEX, "mismatch of assoc");
-	  rc = fc_getSubsetMembersAsArray(subset, &temp_numMember,
-					  &temp_members);
-	  fail_unless(rc == FC_SUCCESS, "failed to get members");
-	  fail_unless(!memcmp(temp_members, members[m],
-			 numMembers[m]*sizeof(int)), "mismatch of members");
-	  free(temp_members);
 	}
+	for (m = 0; m < j &&  j!= 3; m++){
+	  fail_unless(found[m] == 1, "mismatch of meshes");
+	}
+	for (m = j; m < 2; m++)
+	  fail_unless(found[m] == 0, "mismatch of meshes");
+	if (j == 3)
+	  fail_unless(found[2] == temp_numMesh, "mismatch of meshes");
+	else 
+	  fail_unless(found[2] == 0, "mismatch of meshes");
 	free(temp_subsets);
       }
       free(temp_meshes);
@@ -1617,22 +1637,162 @@ START_TEST(exo_node_set)
 END_TEST
 
 
+START_TEST(exo_seq_node_set)
+{
+  FC_ReturnCode rc;
+  int i, j, k, m, ii, jj;
+  int temp_numMesh, temp_numSubset, temp_numMember, *temp_members;
+  FC_Dataset dataset;
+  FC_Mesh mesh, *temp_meshes;
+  FC_Subset subset, *temp_subsets, *seqSubset;
+  FC_AssociationType temp_assoc;
+  FC_Sequence sequence;
+  int numStep = 5;
+  char* ds_name = "dataset";
+  char* sub_names[2] = { "First 5 verts", "random verts" };
+  char* seq_name = "sequence";
+  char* temp_name;
+  int numMembers[2] = { 5, 7 };
+  int members[2][7] = { { 0, 1, 2, 3, 4 }, { 2, 7, 11, 13, 21, 23, 25 } };
+  int data[5];
+  int mask[2][6];
+
+  for (i = 0; i < 5; i++) 
+    data[i] = i/10.;
+    
+
+  // Test writing single mesh or two meshes with 1 or two node sets
+  for (i = 1; i <= 2; i++) { // number of meshes
+    for (j = 1; j <= 2; j++) { // number of nodeset per mesh
+      
+      // Create dataset, meshes & subset
+      rc = fc_createDataset(ds_name, &dataset);
+      fail_unless(rc == FC_SUCCESS, "abort: failed to create dataset");
+      // sequence
+      rc = fc_createSequence(dataset, seq_name, &sequence);
+      fail_unless(rc == FC_SUCCESS, "abort: failed to create sequence");
+      rc = fc_setSequenceCoords(sequence, numStep, FC_DT_FLOAT, data);
+      fail_unless(rc == FC_SUCCESS, "abort: failed to set sequence coords");
+
+      for (k = 0; k < i; k++) { 
+	rc = _fc_makeMeshFromFiles(dataset, vertFiles[2+k], elemFiles[2+k], 
+				   &mesh);
+	fail_unless(rc == FC_SUCCESS, "abort: failed to create mesh");
+
+	temp_subsets = (FC_Subset*)malloc(numStep*sizeof(FC_Subset));
+	for (m = 0; m < j; m++) {
+	  rc = fc_createSubset(mesh, sub_names[m], FC_AT_VERTEX, &subset);
+	  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset");
+	  rc = fc_addArrayMembersToSubset(subset, numMembers[m], members[m]);
+	  fail_unless(rc == FC_SUCCESS, 
+		      "abort: failed to add members to subset");
+	  for (ii = 0; ii < numStep; ii++){
+	    rc = fc_copySubset(subset, mesh, "junk", &(temp_subsets[ii]));
+	    fail_unless(rc == FC_SUCCESS, 
+			"abort: failed to copy subset");
+	  }
+	  rc = fc_convertSubsetsToSeqSubset(numStep, temp_subsets, sequence, sub_names[m], 
+					    &seqSubset);
+	  fail_unless(rc == FC_SUCCESS, 
+		      "abort: failed to create seq subset");
+	  free(seqSubset);
+	}
+	free(temp_subsets);
+      }
+
+      // test writing
+      rc = fc_writeDataset(dataset, EXODUS_FILE_NAME, FC_FT_EXODUS);
+      fail_unless(rc == FC_SUCCESS, "should be able to write dataset");
+
+      // test close & reopen
+      rc = fc_deleteDataset(dataset);
+      fail_unless(rc == FC_SUCCESS, "should close dataset w/o error");
+      rc = fc_loadDatasetWithFormat(EXODUS_FILE_NAME, FC_FT_EXODUS, &dataset);
+      fail_unless(rc == FC_SUCCESS, "should load dataset");
+
+      // check dataset, mesh & subsets
+      rc = fc_getMeshes(dataset, &temp_numMesh, &temp_meshes);
+      fail_unless(temp_numMesh == i, "mismatch of numMesh");
+      for (k = 0; k < i; k++) {
+	for (m = 0; m < 2; m++){
+	  for (ii = 0; ii < 6; ii++){
+	    mask[m][ii] = 0;
+	  }
+	}
+
+	rc = fc_getSubsets(temp_meshes[k], &temp_numSubset, &temp_subsets);
+	fail_unless(temp_numSubset == j*numStep+j, "mismatch of numSubset");
+	// check subsets
+	for (m = 0; m < temp_numSubset; m++) {
+	  int found = 0;
+	  subset = temp_subsets[m];
+	  rc = fc_getSubsetName(subset, &temp_name);
+	  fail_unless(rc == FC_SUCCESS, "should get subset name");
+	  //we should have the one orig with no numbering and then numStep with numbering per j
+	  for (ii = 0; ii < j; ii++){
+	    if (!strncmp(temp_name, sub_names[ii], strlen(sub_names[ii]))){
+	      for (jj = 0; jj < numStep+1; jj++){
+		char* comp_name = (char*)malloc((strlen(sub_names[ii])+40)*sizeof(char));
+		if (jj < numStep){
+		  strcpy(comp_name,sub_names[ii]);
+		} else {
+		  snprintf(comp_name, strlen(sub_names[ii])+40,"%s_%d", sub_names[ii],jj);
+		}
+		if (!strcmp(temp_name,comp_name)){
+		  fail_unless(mask[ii][jj] == 0, "already found subset");
+		  mask[ii][jj] = 1;
+		  rc = fc_getSubsetInfo(subset, &temp_numMember, NULL, &temp_assoc);
+		  fail_unless(rc == FC_SUCCESS, "failed to get subset info");
+		  fail_unless(temp_numMember == numMembers[ii], 
+			      "mismatch of numMember");
+		  fail_unless(temp_assoc == FC_AT_VERTEX, "mismatch of assoc");
+		  rc = fc_getSubsetMembersAsArray(subset, &temp_numMember,
+						  &temp_members);
+		  fail_unless(rc == FC_SUCCESS, "failed to get members");
+		  fail_unless(!memcmp(temp_members, members[ii],
+				      numMembers[ii]*sizeof(int)), "mismatch of members"); 
+		  free(temp_members);
+		  free(comp_name);
+		  found = 1;
+		  break;
+		}
+		free(comp_name);
+	      } //jj
+	    } //if
+	    if (found) break;
+	  } //ii
+	  free(temp_name);
+	}
+	free(temp_subsets);
+      }
+      free(temp_meshes);
+    }
+  }
+
+
+  // all done
+  rc = fc_deleteDataset(dataset);
+  fail_unless(rc == FC_SUCCESS, "failed to close after testing");
+}
+END_TEST
+
+
 //checks both side and elem sets
 START_TEST(exo_elem_side_set)
 {
   FC_ReturnCode rc;
-  int i, j;
+  int i, j, k;
   int temp_numMesh, temp_numSubset, temp_numMember, *temp_members;
   FC_Dataset dataset;
   FC_Mesh mesh, *temp_meshes;
   FC_Subset subset, *temp_subsets;
   char* ds_name = "dataset";
   FC_AssociationType assoc, temp_assoc;
-  char* sub_names[2] = { "First 5 'sides'", "random 'sides'" };
+  char* sub_names[4] = { "First 5 'sides'", "random 'sides'" , "emptyside", "emptyelem"};
   char* temp_name;
-  int numMembers[2] = { 5, 7 };
+  int numMembers[4] = { 5, 7, 0 };
   //note these numbers also work for elem sets as well
-  int members[2][7] = { { 0, 1, 2, 3, 4 }, { 2, 7, 11, 13, 21, 23, 25 } };
+  int members[4][7] = { { 0, 1, 2, 3, 4 }, { 2, 7, 11, 13, 21, 23, 25 }, {} };
   int worked[8][5] = { { 1, -1, -1, 1, 0 },   // point
 		       { 1, -1, -1, 1, 0 },   // line
 		       { 1,  1, -1, 1, 0 },   // tri
@@ -1715,11 +1875,248 @@ START_TEST(exo_elem_side_set)
 
   fflush(NULL);
 
+  // ** Case 2 -- Multiple meshes & multiple side sets (edges on 2D meshes) and empty side and elem set
+
+  // Create dataset, meshes & subset
+  rc = fc_createDataset(ds_name, &dataset);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create dataset");
+  assoc = FC_AT_EDGE;
+  for (i = 2; i < 4; i++) { // tri & quad
+    rc = _fc_makeMeshFromFiles(dataset, vertFiles[i], elemFiles[i],
+			       &mesh);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to create mesh");
+    for (j = 0; j < 4; j++) {
+      rc = fc_createSubset(mesh, sub_names[j], assoc, &subset);
+      fail_unless(rc == FC_SUCCESS, "abort: failed to create subset");
+      if (numMembers[j] > 0){
+	rc = fc_addArrayMembersToSubset(subset, numMembers[j], members[j]);
+	fail_unless(rc == FC_SUCCESS, 
+		    "abort: failed to add members to subset");
+      }
+    }
+  }
+ 
+  // test writing
+  rc = fc_writeDataset(dataset, EXODUS_FILE_NAME, FC_FT_EXODUS);
+  fail_unless(rc == FC_SUCCESS, "should be able to write dataset");
+
+  // test close & reopen
+  rc = fc_deleteDataset(dataset);
+  fail_unless(rc == FC_SUCCESS, "should close dataset w/o error");
+  rc = fc_loadDatasetWithFormat(EXODUS_FILE_NAME, FC_FT_EXODUS, &dataset);
+  fail_unless(rc == FC_SUCCESS, "should load dataset");
+
+  // check subsets
+  rc = fc_getMeshes(dataset, &temp_numMesh, &temp_meshes);
+  fail_unless(temp_numMesh == 2, "mismatch of numMesh");
+  for (i = 0; i < 2; i++) {
+    int found[4] = {0,0,0,0};
+    rc = fc_getSubsets(temp_meshes[i], &temp_numSubset, &temp_subsets);
+    //empty side and elem sets will be put on all meshes
+    fail_unless(temp_numSubset == 6, "mismatch of numSubset");
+    for (j = 0; j < 6; j++) {
+      rc = fc_getSubsetName(temp_subsets[j], &temp_name);
+      fail_unless(rc == FC_SUCCESS, "should get subset name");
+      //get nummesh*nummesh versions of empty subset since they was
+      //initially put on all meshes and then will be copied onto all meshes
+      //as part of the load
+      for (k = 0; k < 4; k++){
+	if (!strcmp(temp_name, sub_names[k])){
+	  rc = fc_getSubsetInfo(temp_subsets[j], &temp_numMember, NULL, &temp_assoc);
+	  fail_unless(rc == FC_SUCCESS, "failed to get subset info");
+	  fail_unless(temp_numMember == numMembers[k], 
+		      "mismatch of numMember");
+	  fail_unless(temp_assoc == assoc, "mismatch of assoc");
+	  if (temp_numMember > 0){
+	    rc = fc_getSubsetMembersAsArray(temp_subsets[j], &temp_numMember,
+					    &temp_members);
+	    fail_unless(rc == FC_SUCCESS, "failed to get members");
+	    fail_unless(!memcmp(temp_members, members[k],
+			    numMembers[k]*sizeof(int)), "mismatch of members");
+	    free(temp_members);
+	  }
+	  found[k]++;
+	}
+      }
+      free(temp_name);
+    }
+    fail_unless(found[0] == 1, "wrong num copies of subset");
+    fail_unless(found[1] == 1, "wrong num copies of subset");
+    fail_unless(found[2] == 2, "wrong num copies of empty subset");
+    fail_unless(found[3] == 2, "wrong num copies of empty subset");
+    free(temp_subsets);
+  }
+  free(temp_meshes);
+
+  // all done
+  rc = fc_deleteDataset(dataset);
+  fail_unless(rc == FC_SUCCESS, "failed to close after testing");
+}
+END_TEST
+
+
+//checks both side and elem sets
+START_TEST(exo_seq_elem_side_set)
+{
+  FC_ReturnCode rc;
+  int i, j, m, ii, jj, mm;
+  int temp_numMesh, temp_numSubset, temp_numMember, *temp_members;
+  FC_Dataset dataset;
+  FC_Mesh mesh, *temp_meshes;
+  FC_Subset subset, *temp_subsets, *seqSubset;
+  char* ds_name = "dataset";
+  FC_AssociationType  temp_assoc, assoc;
+  char* sub_names[2] = { "First 5 'sides'", "random 'sides'" };
+  char* temp_name;
+  int numMembers[2] = { 5, 7 };
+  FC_Sequence sequence;
+  int numStep = 5;
+  char* seq_name = "sequence";
+  int data[5];
+  int mask[2][6];
+
+  //note these numbers also work for elem sets as well
+  int members[2][7] = { { 0, 1, 2, 3, 4 }, { 2, 7, 11, 13, 21, 23, 25 } };
+  int worked[8][5] = { { 1, -1, -1, 1, 0 },   // point
+		       { 1, -1, -1, 1, 0 },   // line
+		       { 1,  1, -1, 1, 0 },   // tri
+		       { 1,  1, -1, 1, 0 },   // quad
+		       { 1,  0,  1, 1, 0 },   // tet
+		       { 1,  0,  1, 1, 0 },   // pyramid
+		       { 1,  0,  1, 1, 0 },   // prism
+		       { 1,  0,  1, 1, 0 } }; // hex
+  
+  // ** Case 1 -- Single mesh single side set - test every kind sideset/mesh combo
+
+  fflush(NULL);
+
+  for (i = 0; i < 5; i++) 
+    data[i] = i/10.;
+
+  for (i = 0; i < numMeshType; i++) {
+    for (j = 1; j < numAssocType; j++) { // skip vertex, done in prv test
+
+      // skip inappropriate combinatations 
+      if ( ((i == 0 || i == 1) && (j == 1 || j == 2)) || 
+         ((i == 2 || i == 3) && j == 2) )
+	continue;
+
+      // Create dataset, mesh & subset
+      rc = fc_createDataset(ds_name, &dataset);
+      fail_unless(rc == FC_SUCCESS, "abort: failed to create dataset");
+      // sequence
+      rc = fc_createSequence(dataset, seq_name, &sequence);
+      fail_unless(rc == FC_SUCCESS, "abort: failed to create sequence");
+      rc = fc_setSequenceCoords(sequence, numStep, FC_DT_FLOAT, data);
+      fail_unless(rc == FC_SUCCESS, "abort: failed to set sequence coords");
+
+      rc = _fc_makeMeshFromFiles(dataset, vertFiles[i], elemFiles[i], 
+				 &mesh);
+      fail_unless(rc == FC_SUCCESS, "abort: failed to create mesh");
+      //note that this also works for elem set as well, even though still
+      //using the side names and numbers for the data
+      rc = fc_createSubset(mesh, sub_names[0], assocTypes[j], &subset);
+      fail_unless(rc == FC_SUCCESS, "abort: failed to create subset");
+      if (j < 4)
+	rc = fc_addArrayMembersToSubset(subset, numMembers[0], members[0]);
+      else
+	rc = fc_addMemberToSubset(subset, 0);
+      fail_unless(rc == FC_SUCCESS, 
+		  "abort: failed to add members to subset");
+      temp_subsets = (FC_Subset*)malloc(numStep*sizeof(FC_Subset));
+      for (ii = 0; ii < numStep; ii++){
+	rc = fc_copySubset(subset, mesh, "junk", &(temp_subsets[ii]));
+	fail_unless(rc == FC_SUCCESS, 
+		    "abort: failed to copy subset");
+      }
+      rc = fc_convertSubsetsToSeqSubset(numStep, temp_subsets, sequence, sub_names[0], 
+					&seqSubset);
+      fail_unless(rc == FC_SUCCESS, 
+		  "abort: failed to create seq subset");
+      free(seqSubset);
+      free(temp_subsets);
+
+      // test writing
+      rc = fc_writeDataset(dataset, EXODUS_FILE_NAME, FC_FT_EXODUS);
+      fail_unless(rc == FC_SUCCESS, "should be able to write dataset");
+      
+      // test close & reopen
+      rc = fc_deleteDataset(dataset);
+      fail_unless(rc == FC_SUCCESS, "should close dataset w/o error");
+      
+      rc = fc_loadDatasetWithFormat(EXODUS_FILE_NAME, FC_FT_EXODUS, &dataset);
+      fail_unless(rc == FC_SUCCESS, "should load dataset");
+
+      // check subsets
+      rc = fc_getMeshes(dataset, &temp_numMesh, &temp_meshes);
+      fail_unless(temp_numMesh == 1, "mismatch of numMesh");
+      rc = fc_getSubsets(temp_meshes[0], &temp_numSubset, &temp_subsets);
+      fail_unless(temp_numSubset == worked[i][j]*numStep+worked[i][j], "mismatch of numSubset");
+      if (temp_subsets) {
+	// check subsets
+	for (mm = 0; mm < 2; mm++){
+	  for (m = 0; m < numStep+1; m++){
+	    mask[mm][m] = 0;
+	  }
+	}
+	for (m = 0; m < temp_numSubset; m++) {
+	  subset = temp_subsets[m];
+	  rc = fc_getSubsetName(subset, &temp_name);
+	  fail_unless(rc == FC_SUCCESS, "should get subset name");
+	  //we should have the one orig with no numbering and then numStep with numbering
+	  if (!strncmp(temp_name, sub_names[0], strlen(sub_names[0]))){
+	    for (jj = 0; jj < numStep+1; jj++){
+	      char* comp_name = (char*)malloc((strlen(sub_names[0])+40)*sizeof(char));
+	      if (jj < numStep){
+		strcpy(comp_name,sub_names[0]);
+	      } else {
+		snprintf(comp_name, strlen(sub_names[0])+40,"%s_%d", sub_names[0],jj);
+	      }
+	      if (!strcmp(temp_name,comp_name)){
+		fail_unless(mask[0][jj] == 0, "already found subset");
+		mask[0][jj] = 1;
+		rc = fc_getSubsetInfo(subset, &temp_numMember, NULL, &temp_assoc);
+		fail_unless(rc == FC_SUCCESS, "failed to get subset info");
+		fail_unless(temp_assoc == assocTypes[j], "mismatch of assoc");
+		fail_unless(temp_numMember == numMembers[0], 
+			      "mismatch of numMember");
+		rc = fc_getSubsetMembersAsArray(subset, &temp_numMember,
+						&temp_members);
+		fail_unless(rc == FC_SUCCESS, "failed to get members");
+		fail_unless(!memcmp(temp_members, members[0],
+				    numMembers[0]*sizeof(int)), "mismatch of members"); 
+		free(temp_members);
+		free(comp_name); 
+		break;
+	      }
+	      free(comp_name); 
+	    } //jj
+	  } //if
+	  free(temp_name);
+	}
+	free(temp_subsets);
+      }
+
+      // all done
+      free(temp_meshes);
+      rc = fc_deleteDataset(dataset);
+      fail_unless(rc == FC_SUCCESS, "failed to close after testing");
+      
+    }
+  }
+
+  fflush(NULL);
+
   // ** Case 2 -- Multiple meshes & multiple side sets (edges on 2D meshes)
 
   // Create dataset, meshes & subset
   rc = fc_createDataset(ds_name, &dataset);
   fail_unless(rc == FC_SUCCESS, "abort: failed to create dataset");
+  rc = fc_createSequence(dataset, seq_name, &sequence);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create sequence");
+  rc = fc_setSequenceCoords(sequence, numStep, FC_DT_FLOAT, data);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to set sequence coords");
+
   assoc = FC_AT_EDGE;
   for (i = 2; i < 4; i++) { // tri & quad
     rc = _fc_makeMeshFromFiles(dataset, vertFiles[i], elemFiles[i],
@@ -1731,6 +2128,18 @@ START_TEST(exo_elem_side_set)
       rc = fc_addArrayMembersToSubset(subset, numMembers[j], members[j]);
       fail_unless(rc == FC_SUCCESS, 
 		  "abort: failed to add members to subset");
+      temp_subsets = (FC_Subset*)malloc(numStep*sizeof(FC_Subset));
+      for (ii = 0; ii < numStep; ii++){
+	rc = fc_copySubset(subset, mesh, "junk", &(temp_subsets[ii]));
+	fail_unless(rc == FC_SUCCESS, 
+		    "abort: failed to copy subset");
+      }
+      rc = fc_convertSubsetsToSeqSubset(numStep, temp_subsets, sequence, sub_names[0], 
+					&seqSubset);
+      fail_unless(rc == FC_SUCCESS, 
+		  "abort: failed to create seq subset");
+      free(seqSubset);
+      free(temp_subsets);
     }
   }
  
@@ -1749,26 +2158,59 @@ START_TEST(exo_elem_side_set)
   fail_unless(temp_numMesh == 2, "mismatch of numMesh");
   for (i = 0; i < 2; i++) {
     rc = fc_getSubsets(temp_meshes[i], &temp_numSubset, &temp_subsets);
-    fail_unless(temp_numSubset == 2, "mismatch of numSubset");
-    for (j = 0; j < 2; j++) {
-      rc = fc_getSubsetName(temp_subsets[j], &temp_name);
-      fail_unless(rc == FC_SUCCESS, "should get suset name");
-      fail_unless(!strcmp(temp_name, sub_names[j]), "subset name mismatch");
-      free(temp_name);
-      rc = fc_getSubsetInfo(temp_subsets[j], &temp_numMember, NULL, &temp_assoc);
-      fail_unless(rc == FC_SUCCESS, "failed to get subset info");
-      fail_unless(temp_numMember == numMembers[j], 
-		  "mismatch of numMember");
-      fail_unless(temp_assoc == assoc, "mismatch of assoc");
-      rc = fc_getSubsetMembersAsArray(temp_subsets[j], &temp_numMember,
-				      &temp_members);
-      fail_unless(rc == FC_SUCCESS, "failed to get members");
-      fail_unless(!memcmp(temp_members, members[j],
-			  numMembers[j]*sizeof(int)), "mismatch of members");
-      free(temp_members);
+    fail_unless(temp_numSubset == 2*numStep+2, "mismatch of numSubset");
+    if (temp_subsets) {
+      // check subsets
+      for (m = 0; m < 2; m++){
+	for (mm = 0; mm < numStep+1; mm++){
+	  mask[m][mm] = 0;
+	}
+      }
+      for (m = 0; m < temp_numSubset; m++) {
+	int found = 0;
+	subset = temp_subsets[m];
+	rc = fc_getSubsetName(subset, &temp_name);
+	fail_unless(rc == FC_SUCCESS, "should get subset name");
+	//we should have the one orig with no numbering and then numStep with numbering
+	//for each orig subset
+	for (mm = 0; mm < 2; mm++){
+	  if (!strncmp(temp_name, sub_names[mm], strlen(sub_names[mm]))){
+	    for (jj = 0; jj < numStep+1; jj++){
+	      char* comp_name = (char*)malloc((strlen(sub_names[mm])+40)*sizeof(char));
+	      if (jj < numStep){
+		strcpy(comp_name,sub_names[mm]);
+	      } else {
+		snprintf(comp_name, strlen(sub_names[mm])+40,"%s_%d", sub_names[mm],jj);
+	      }
+	      if (!strcmp(temp_name,comp_name)){
+		fail_unless(mask[mm][jj] == 0, "already found subset");
+		mask[mm][jj] = 1;
+		rc = fc_getSubsetInfo(subset, &temp_numMember, NULL, &temp_assoc);
+		fail_unless(rc == FC_SUCCESS, "failed to get subset info");
+		fail_unless(temp_assoc == assoc, "mismatch of assoc");
+		fail_unless(temp_numMember == numMembers[mm], 
+			    "mismatch of numMember");
+		rc = fc_getSubsetMembersAsArray(subset, &temp_numMember,
+						&temp_members);
+		fail_unless(rc == FC_SUCCESS, "failed to get members");
+		fail_unless(!memcmp(temp_members, members[mm],
+				    numMembers[mm]*sizeof(int)), "mismatch of members"); 
+		free(temp_members);
+		free(comp_name); 
+		found = 1;
+		break;
+	      }
+	      free(comp_name); 
+	    } //jj
+	  } //if
+	  if (found) break;
+	} //mm
+	free(temp_name);
+      } //m
+      free(temp_subsets);
     }
-    free(temp_subsets);
-  }
+  } // i 
+
   free(temp_meshes);
 
   // all done
@@ -1776,6 +2218,7 @@ START_TEST(exo_elem_side_set)
   fail_unless(rc == FC_SUCCESS, "failed to close after testing");
 }
 END_TEST
+
 
 // FC can't write global subsets, but may encounter them: So write an exo file
 // (via exodus API) with 1 global nodeset & 1 global elem set & 1 global
@@ -4968,7 +5411,9 @@ Suite *fileio_suite(void)
   tcase_add_test(tc_exodus, exo_mesh);
   tcase_add_test(tc_exodus, exo_multi_mesh);
   tcase_add_test(tc_exodus, exo_node_set);
+  tcase_add_test(tc_exodus, exo_seq_node_set);
   tcase_add_test(tc_exodus, exo_elem_side_set);
+  tcase_add_test(tc_exodus, exo_seq_elem_side_set);
   tcase_add_test(tc_exodus, exo_global_subsets);
   tcase_add_test(tc_exodus, exo_whole_var);
   tcase_add_test(tc_exodus, exo_seq);

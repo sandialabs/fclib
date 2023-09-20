@@ -177,6 +177,9 @@ typedef struct {
   //---subsets
   int numSub;         /**< Number of subsets owned by this mesh */
   int *subIDs;        /**< Array of slot numbers identifying subsets */
+  int numSeqSub;         /**< Number of subsets owned by this mesh */
+  int *numStepPerSeqSub; /**< Number of steps in each seq sub */
+  int **seqSubIDs;        /**< Array of slot numbers identifying subsets */
   //---Variable breakdown: Access of variables by type = coord, basic, seq
   int coordVarID; /**< Slot ID of the coordinate array. This is -1 if
                        if there are no coords on the mesh, or the slotID 
@@ -233,6 +236,11 @@ _FC_MeshSlot* _fc_getMeshSlotFromID(int meshID);
 FC_ReturnCode _fc_deleteMeshSlot(FC_Mesh mesh);
 void _fc_printMeshTable(char *label);
 void _fc_freeMeshTable(void);
+
+
+// updates to sphere
+FC_ReturnCode _fc_setSphereCoords(int numVerts,
+		      FC_Coords center, double radius, double *coords);
 
 
 #ifdef __cplusplus

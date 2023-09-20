@@ -421,6 +421,8 @@ int main(void)
   // Memory cleanup - Arrays of small data and data objects not managed
   // by the library.
   free(seqVariable);
+  //writeout feature graph
+  fc_writeFeatureGraph(featureGroup,"ex3_FeatureGraph");
   fc_freeFeatureGroup(featureGroup);
 
   // When you are all done it is a good idea to finalize the library.

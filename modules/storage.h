@@ -92,12 +92,15 @@ typedef double FC_Vector[3];
  *   fc_squeezeSortedIntArray() can be used to minimize memory usage.
  *
  * \modifications 
- *    - 06/06/06 ACG created
+ *    - 2006/06/06 ACG created
+ *    - 2008/05/02 CDU Updated to support getting unsorted vals back
  */
 typedef struct {
-  int numVal;     /**< number of values */
-  int maxNumVal;  /**< total allocated space (max possible number of values) */
+  int  numVal;     /**< number of values */
+  int  maxNumVal;  /**< total allocated space (max possible number of values) */
   int* vals;      /**< int array holding the values */
+  int  nextTicket; /**< the next unique ticket to assign to an inserted val */
+  int* tickets;   /**< each val has an insert ticket so we can extract vals in order they were inserted */
 } FC_SortedIntArray;
 
 /**
@@ -136,6 +139,9 @@ FC_ReturnCode fc_getSortedIntArrayNumValue(FC_SortedIntArray *sia,
 		        int* numVal);
 FC_ReturnCode fc_getSortedIntArrayValues(FC_SortedIntArray *sia,
 			int* numVal, int** values);
+FC_ReturnCode fc_getSortedIntArrayValuesInInsertOrder(FC_SortedIntArray *sia,  
+		        int* numValue, int** values);
+
 int fc_isIntInSortedIntArray(FC_SortedIntArray *sia, int i);
 int fc_addIntToSortedIntArray(FC_SortedIntArray *sia, int i);
 int fc_addIntArrayToSortedIntArray(FC_SortedIntArray *sia, int num, 

@@ -403,6 +403,17 @@ gcc -o exe src.c `fcinfo --cflags` `fcinfo --libs`
      *    See maxStress.c.
      */
 
+    /**
+     * \ingroup Tools
+     * \defgroup regionreassembler regionreassembler
+     * \brief Reassembles vars on promoted subset meshes (from the
+     *    subsetter tool) onto the orig mesh. (more at regionreassembler.c).
+     *
+     * \description
+     *
+     *    See regionreassembler.c.
+     */
+
    /**
      * \ingroup Tools
      * \defgroup screwBreaks screwBreaks
@@ -432,6 +443,17 @@ gcc -o exe src.c `fcinfo --cflags` `fcinfo --libs`
      * \description
      *
      *    See sierradump.c.
+     */
+
+    /**
+     * \ingroup Tools
+     * \defgroup subsetter subsetter
+     * \brief Subsets on a var, optional promotion to mesh to work
+     *      with reassmbler toolput file (more at subsetter.c).
+     *
+     * \description
+     *
+     *    See subsetter.c.
      */
 
     /**

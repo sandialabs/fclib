@@ -441,34 +441,49 @@ FC_ReturnCode fc_setMeshElementConnsPtr(
  * \description
  *  
  *    Create a copy of a mesh, in the specified dataset, with the 
- *    given name. This also copies all variables on the mesh.
+ *    given name. There is a flag to copy only the geom vs
+ *    copying subsets and variables on the mesh.
  *
- *    Note: if there are any sequence variables on the mesh, this
+ *    Note: if you chose to copy the sub/var, if there are 
+ *    any sequence subsets/variables on the mesh, this
  *    routine may copy their related sequences if they do not
  *    exist in the destination dataset.
  *
- * \todo Should better define what constitutes an appropriate sequence
+ *    Note that this does not copy the globals, since those are
+ *    on the dataset and not on the mesh
+ *
+ * \todo 
+ *    - Should better define what constitutes an appropriate sequence
  *    when copying sequence variables. Right now very conservative:
  *    expects to find essentially the same sequence: same name &
  *    same data values.
+ *    - test doCopy = 0 option
+ *    - test individual copy flags
  *
  * \modifications 
  *   - 2003-NOV-11 WSK Created
  *   - 10/4/04 WSK, changed internals so they call more routines and
  *       go to the structs less often.
+ *   - 01/12/08 ACG - option to only copy geom
+ *   - 03/07/08 ACG - copy seq subset
+ *   - 06/17/08 ACG - individual copy flags
  */
 FC_ReturnCode fc_copyMesh(
   FC_Mesh src_mesh,   /**< Input - the source mesh to be copied */
   FC_Dataset dest_ds, /**< Input - the destination dataset to be copied into */
   char *newName,      /**< Input - the name of the new mesh, a NULL value
                             is a flag to use the name of the source mesh */
+  int doCopyVar,        /**< Input - 1 to copy over the var */
+  int doCopySeqVar,     /**< Input - 1 to copy over the seqvar */
+  int doCopySubset,     /**< Input - 1 to copy over the subsets */
+  int doCopySeqSubset,     /**< Input - 1 to copy over the seqsubsets */
   FC_Mesh* new_mesh   /**< Output - handle to the new mesh */
 ) { 
   int i, j;
   FC_ReturnCode rc;
   int topodim, dim, numVert, numElem;
-  int numSubset, numVariable, numSeqVar, *numStepPerSeq;
-  FC_Subset *subsets, new_subset;
+  int numSubset, numSeqSub, numVariable, numSeqVar, *numStepPerSeq;
+  FC_Subset *subsets, new_subset, **seqSubs, *new_seqSub;
   FC_Variable *variables, new_var, **seqVars, *new_seqVar;
   FC_ElementType elemType;
   double *coords;
@@ -483,7 +498,11 @@ FC_ReturnCode fc_copyMesh(
   // check input
   dest_dsSlot = _fc_getDsSlot(dest_ds);
   src_meshSlot = _fc_getMeshSlot(src_mesh);
-  if (dest_dsSlot == NULL || src_meshSlot == NULL || new_mesh == NULL) {
+  if (dest_dsSlot == NULL || src_meshSlot == NULL || new_mesh == NULL
+      || (doCopyVar < 0 || doCopyVar > 1 ) 
+      || (doCopySeqVar < 0 || doCopySeqVar > 1 ) 
+      || (doCopySubset < 0 || doCopySubset > 1 ) 
+      || (doCopySeqSubset < 0 || doCopySeqSubset > 1 )){ 
     fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
     return FC_INPUT_ERROR;
   }
@@ -534,133 +553,234 @@ FC_ReturnCode fc_copyMesh(
     return rc;
   }
 
+  if (doCopyVar == 0 && doCopySeqVar == 0 && doCopySubset == 0 && doCopySeqSubset == 0){
+    return FC_SUCCESS;
+  }
+
   // Note: if you change behavior here, might want to change in
   // fc_createSubsetMesh() too
-
-  // copy the subsets
-  rc = fc_getSubsets(src_mesh, &numSubset, &subsets);
-  if (rc != FC_SUCCESS)
-    return rc;
-  for (i = 0; i < numSubset; i++) {
-    rc = fc_copySubset(subsets[i], *new_mesh, NULL, &new_subset);
-    if (rc != FC_SUCCESS) {
-      fc_printfErrorMessage("Failed to copy member subset");
-      return rc;
-    }
-  }
-  free(subsets);
-
-  // copy the basic variables
-  rc = fc_getVariables(src_mesh, &numVariable, &variables);
-  if (rc != FC_SUCCESS)
-    return rc;
-  for (i = 0; i < numVariable; i++) {
-    // do something different for the mesh 'coords as variable'
-    if (variables[i].slotID == src_meshSlot->coordVarID) {
-      rc = fc_getMeshCoordsAsVariable(*new_mesh, &new_var);
-      if (rc != FC_SUCCESS) {
-        fc_printfErrorMessage("Failed to create copy of coords variable");
-        return rc;
-      }
-    }
-    // normal path for variables
-    else {
-      rc = fc_copyVariable(variables[i], *new_mesh, NULL, &new_var);
-      if (rc != FC_SUCCESS) {
-        fc_printfErrorMessage("Failed to copy member variable");
-        return rc;
-      }
-    }
-  }
-  free(variables);
-
-  // copy the sequence variables
-  rc = fc_getSeqVariables(src_mesh, &numSeqVar, &numStepPerSeq, &seqVars);
-  if (rc != FC_SUCCESS)
-    return rc;
-  for (i = 0; i < numSeqVar; i++) {
-    FC_Sequence src_seq, dest_seq;
-
-    // look for appropriate sequence on the destination dataset
-    rc = fc_getSequenceFromSeqVariable(numStepPerSeq[i], seqVars[i],
-                                       &src_seq);
+  if (doCopySubset){
+    // copy the subsets
+    rc = fc_getSubsets(src_mesh, &numSubset, &subsets);
     if (rc != FC_SUCCESS)
       return rc;
-    dest_seq = FC_NULL_SEQUENCE;
-    // if we are in the same dataset, reuse the same sequence
-    if (FC_HANDLE_EQUIV(dest_ds, src_meshSlot->ds)) 
-      dest_seq = src_seq;
-    else { // look for an appropriate sequence in dest_ds
-      int dest_numSequence, src_numStep, dest_numStep;
-      FC_Sequence *dest_sequences;
-      char* src_name, *dest_name;
-      FC_DataType src_dataType, dest_dataType;
-      void* src_coords_p, *dest_coords_p;
-
-      // collect src sequence info      
-      rc = fc_getSequenceName(src_seq, &src_name);
-      if (rc != FC_SUCCESS)
-        return rc;
-      rc = fc_getSequenceInfo(src_seq, &src_numStep, &src_dataType); 
-      if (rc != FC_SUCCESS)
-        return rc;
-      rc = fc_getSequenceCoordsPtr(src_seq, &src_coords_p);
-      if (rc != FC_SUCCESS)
-        return rc;
- 
-      // compare to dest sequences
-      rc = fc_getSequences(dest_ds, &dest_numSequence, &dest_sequences);
-      if (rc != FC_SUCCESS)
-        return rc;
-      for (j = 0; j < dest_numSequence; j++) {
-        rc = fc_getSequenceName(dest_sequences[j], &dest_name);
-        if (rc != FC_SUCCESS)
-          return rc;
-        rc = fc_getSequenceInfo(dest_sequences[j], &dest_numStep,
-                                &dest_dataType); 
-        if (rc != FC_SUCCESS)
-          return rc;
-        rc = fc_getSequenceCoordsPtr(dest_sequences[j], &dest_coords_p);
-        if (rc != FC_SUCCESS)
-          return rc;
-        // compare (?checking actual coords values might be too stringent)
-        if (!strcmp(dest_name, src_name) && dest_numStep == src_numStep && 
-            dest_dataType == src_dataType && 
-            !memcmp(dest_coords_p, src_coords_p, 
-                    fc_sizeofDataType(src_dataType))) {
-
-          free(dest_name);
-
-          // passed all tests, this is the match
-          dest_seq = dest_sequences[j];
-          break;
-        }
-        free(dest_name);
-      }
-      free(dest_sequences);
-      free(src_name);
-    }
-    // if failed to find one, just copy it
-    if (FC_HANDLE_EQUIV(dest_seq, FC_NULL_SEQUENCE)) {
-      rc = fc_copySequence(src_seq, dest_ds, NULL, &dest_seq);
+    for (i = 0; i < numSubset; i++) {
+      rc = fc_copySubset(subsets[i], *new_mesh, NULL, &new_subset);
       if (rc != FC_SUCCESS) {
-        fc_printfErrorMessage("Failed to copy sequence needed for seqVar");
-        return rc;
+	fc_printfErrorMessage("Failed to copy member subset");
+	return rc;
       }
     }
-
-    // copy the sequence variables
-    rc = fc_copySeqVariable(numStepPerSeq[i], seqVars[i], *new_mesh, dest_seq,
-                            NULL, &new_seqVar);
-    if (rc != FC_SUCCESS) {
-      fc_printfErrorMessage("Failed to copy member sequence variable");
-      return rc;
-    }
-    free(new_seqVar);
-    free(seqVars[i]);
+    free(subsets);
   }
-  free(numStepPerSeq);
-  free(seqVars);
+
+
+  if (doCopyVar){
+    // copy the basic variables
+    rc = fc_getVariables(src_mesh, &numVariable, &variables);
+    if (rc != FC_SUCCESS)
+      return rc;
+    for (i = 0; i < numVariable; i++) {
+      // do something different for the mesh 'coords as variable'
+      if (variables[i].slotID == src_meshSlot->coordVarID) {
+	rc = fc_getMeshCoordsAsVariable(*new_mesh, &new_var);
+	if (rc != FC_SUCCESS) {
+	  fc_printfErrorMessage("Failed to create copy of coords variable");
+	  return rc;
+	}
+      }
+      // normal path for variables
+      else {
+	rc = fc_copyVariable(variables[i], *new_mesh, NULL, &new_var);
+	if (rc != FC_SUCCESS) {
+	  fc_printfErrorMessage("Failed to copy member variable");
+	  return rc;
+	}
+      }
+    }
+    free(variables);
+  }
+
+
+  if (doCopySeqVar){
+    // copy the sequence variables
+    rc = fc_getSeqVariables(src_mesh, &numSeqVar, &numStepPerSeq, &seqVars);
+    if (rc != FC_SUCCESS)
+      return rc;
+    for (i = 0; i < numSeqVar; i++) {
+      FC_Sequence src_seq, dest_seq;
+      
+      // look for appropriate sequence on the destination dataset
+      rc = fc_getSequenceFromSeqVariable(numStepPerSeq[i], seqVars[i],
+					 &src_seq);
+      if (rc != FC_SUCCESS)
+	return rc;
+      dest_seq = FC_NULL_SEQUENCE;
+      // if we are in the same dataset, reuse the same sequence
+      if (FC_HANDLE_EQUIV(dest_ds, src_meshSlot->ds)) 
+	dest_seq = src_seq;
+      else { // look for an appropriate sequence in dest_ds
+	int dest_numSequence, src_numStep, dest_numStep;
+	FC_Sequence *dest_sequences;
+	char* src_name, *dest_name;
+	FC_DataType src_dataType, dest_dataType;
+	void* src_coords_p, *dest_coords_p;
+
+	// collect src sequence info      
+	rc = fc_getSequenceName(src_seq, &src_name);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	rc = fc_getSequenceInfo(src_seq, &src_numStep, &src_dataType); 
+	if (rc != FC_SUCCESS)
+	  return rc;
+	rc = fc_getSequenceCoordsPtr(src_seq, &src_coords_p);
+	if (rc != FC_SUCCESS)
+	  return rc;
+ 
+	// compare to dest sequences
+	rc = fc_getSequences(dest_ds, &dest_numSequence, &dest_sequences);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	for (j = 0; j < dest_numSequence; j++) {
+	  rc = fc_getSequenceName(dest_sequences[j], &dest_name);
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	  rc = fc_getSequenceInfo(dest_sequences[j], &dest_numStep,
+				  &dest_dataType); 
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	  rc = fc_getSequenceCoordsPtr(dest_sequences[j], &dest_coords_p);
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	  // compare (?checking actual coords values might be too stringent)
+	  if (!strcmp(dest_name, src_name) && dest_numStep == src_numStep && 
+	      dest_dataType == src_dataType && 
+	      !memcmp(dest_coords_p, src_coords_p, 
+		      fc_sizeofDataType(src_dataType))) {
+
+	    free(dest_name);
+	    
+	    // passed all tests, this is the match
+	    dest_seq = dest_sequences[j];
+	    break;
+	  }
+	  free(dest_name);
+	}
+	free(dest_sequences);
+	free(src_name);
+      }
+      // if failed to find one, just copy it
+      if (FC_HANDLE_EQUIV(dest_seq, FC_NULL_SEQUENCE)) {
+	rc = fc_copySequence(src_seq, dest_ds, NULL, &dest_seq);
+	if (rc != FC_SUCCESS) {
+	  fc_printfErrorMessage("Failed to copy sequence needed for seqVar");
+	  return rc;
+	}
+      }
+      
+      // copy the sequence variables
+      rc = fc_copySeqVariable(numStepPerSeq[i], seqVars[i], *new_mesh, dest_seq,
+			      NULL, &new_seqVar);
+      if (rc != FC_SUCCESS) {
+	fc_printfErrorMessage("Failed to copy member sequence variable");
+	return rc;
+      }
+      free(new_seqVar);
+      free(seqVars[i]);
+    }
+    free(numStepPerSeq);
+    free(seqVars);
+  }
+
+  if (doCopySeqSubset){
+    // copy the sequence subsets
+    rc = fc_getSeqSubsets(src_mesh, &numSeqSub, &numStepPerSeq, &seqSubs);
+    if (rc != FC_SUCCESS)
+      return rc;
+    for (i = 0; i < numSeqSub; i++) {
+      FC_Sequence src_seq, dest_seq;
+      
+      // look for appropriate sequence on the destination dataset
+      rc = fc_getSequenceFromSeqSubset(numStepPerSeq[i], seqSubs[i],
+                                       &src_seq);
+      if (rc != FC_SUCCESS)
+	return rc;
+      dest_seq = FC_NULL_SEQUENCE;
+      // if we are in the same dataset, reuse the same sequence
+      if (FC_HANDLE_EQUIV(dest_ds, src_meshSlot->ds)) 
+	dest_seq = src_seq;
+      else { // look for an appropriate sequence in dest_ds
+	int dest_numSequence, src_numStep, dest_numStep;
+	FC_Sequence *dest_sequences;
+	char* src_name, *dest_name;
+	FC_DataType src_dataType, dest_dataType;
+	void* src_coords_p, *dest_coords_p;
+
+	// collect src sequence info      
+	rc = fc_getSequenceName(src_seq, &src_name);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	rc = fc_getSequenceInfo(src_seq, &src_numStep, &src_dataType); 
+	if (rc != FC_SUCCESS)
+	  return rc;
+	rc = fc_getSequenceCoordsPtr(src_seq, &src_coords_p);
+	if (rc != FC_SUCCESS)
+	  return rc;
+ 
+	// compare to dest sequences
+	rc = fc_getSequences(dest_ds, &dest_numSequence, &dest_sequences);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	for (j = 0; j < dest_numSequence; j++) {
+	  rc = fc_getSequenceName(dest_sequences[j], &dest_name);
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	  rc = fc_getSequenceInfo(dest_sequences[j], &dest_numStep,
+				  &dest_dataType); 
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	  rc = fc_getSequenceCoordsPtr(dest_sequences[j], &dest_coords_p);
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	  // compare (?checking actual coords values might be too stringent)
+	  if (!strcmp(dest_name, src_name) && dest_numStep == src_numStep && 
+	      dest_dataType == src_dataType && 
+	      !memcmp(dest_coords_p, src_coords_p, 
+		      fc_sizeofDataType(src_dataType))) {
+
+	    free(dest_name);
+	    
+	    // passed all tests, this is the match
+	    dest_seq = dest_sequences[j];
+	    break;
+	  }
+	  free(dest_name);
+	}
+	free(dest_sequences);
+	free(src_name);
+      }
+      // if failed to find one, just copy it
+      if (FC_HANDLE_EQUIV(dest_seq, FC_NULL_SEQUENCE)) {
+	rc = fc_copySequence(src_seq, dest_ds, NULL, &dest_seq);
+	if (rc != FC_SUCCESS) {
+	  fc_printfErrorMessage("Failed to copy sequence needed for seqSub");
+	  return rc;
+	}
+      }
+
+      // copy the sequence subsets
+      rc = fc_copySeqSubset(numStepPerSeq[i], seqSubs[i], *new_mesh, dest_seq,
+                            NULL, &new_seqSub);
+      if (rc != FC_SUCCESS) {
+	fc_printfErrorMessage("Failed to copy member sequence sub");
+	return rc;
+      }
+      free(new_seqSub);
+      free(seqSubs[i]);
+    }
+    free(numStepPerSeq);
+    free(seqSubs);
+  }
 
   return FC_SUCCESS;
 }
@@ -673,12 +793,24 @@ FC_ReturnCode fc_copyMesh(
  *
  *    This function extracts a selected subset of a mesh as elements. 
  *    Point and element indices are renumbered to maintain the correct vertex
- *    and element relationships. (This does mean the correspondence 
+ *    and element relationships. This does mean the correspondence 
  *    between vertices and elements extracted in the subset and the 
- *    original dataset are now lost.)
+ *    original dataset are now lost, but will be stored in the special
+ *    variables FC_VERTEXMAP, FC_ELEMENTMAP on the new mesh which will store
+ *    the id of the original mesh entities, if they handles passed in are
+ *    not null.
  *
- *    This routine automatically copies all subsets, variables and
- *    sequence variables.
+ *    There are flags to determine whether subsets, seq subsets, variables and
+ *    sequence variables will be copied over or not. 
+ *    NOTE: if you set them all to 0, only the geom is copied,
+ *    NOTE: If they are to be copied, then all subsets and seq subsets are copied even
+ *    if they have no members in the new mesh (they'll just be empty subsets). 
+ *    The original subset is also copied.
+ *    NOTE: If they are not to be copied, note that the sequences will 
+ *    also be lost.
+ *    NOTE: If you dont copy them over now, you wont be able to later
+ *    because the numbering will have changed. There may be functions added later
+ *    to allows this (like what is being done with regionmesh in variable)
  *
  *    If the association type of the subset is of lesser dimensionality than
  *    FC_AT_ELEMENT, the 'doStrict' flag determines whether to keep new
@@ -693,14 +825,9 @@ FC_ReturnCode fc_copyMesh(
  *    are all 0, or you want a 0 level mesh but not enough vertices
  *    are marked to get whole elements.)
  *
- *    NOTE: all subsets are copied even if they have no members in the
- *    new mesh (they'll just be empty subsets). The original subset is also 
- *    copied.
  *
- * \todo Create new variables that keep track of the mesh entity IDs
- *       from the originating mesh (trivial to implement).
- * 
- * \todo internals could probably be made more efficient spacewise?
+ * \todo 
+ *    - internals could probably be made more efficient spacewise?
  *
  * \modifications 
  *   - 2003-NOV-20  W Koegler  Replace all 6 of old subset routines
@@ -709,17 +836,28 @@ FC_ReturnCode fc_copyMesh(
  *     out which elements to keep.
  *   - 10/2/04 WSK fixing up recursive subsetting of member subsets
  *     variables & seq vars.
+ *   - 01/07/2008 ACG adding flag for not copying subsets, seq vars etc over.
+ *   - 03/07/2008 ACG adding seq subset copy
+ *   - 04/25/2008 ACG mapping vars
+ *   - 06/17/2008 ACG changing copy flag to per type (var, seqvar, subset etc)
+ *                    individual copy flag
  */
 FC_ReturnCode fc_createSubsetMesh(
   FC_Subset subset,     /**< input - subset */
   FC_Dataset dest_ds,   /**< input - dataset to put the new mesh on */
   int doStrict,         /**< input - flag for dropping incomplete entities */
+  int doCopyVar,        /**< Input - 1 to copy over the var */
+  int doCopySeqVar,     /**< Input - 1 to copy over the seqvar */
+  int doCopySubset,     /**< Input - 1 to copy over the subsets */
+  int doCopySeqSubset,     /**< Input - 1 to copy over the seqsubsets */
   char *newName,        /**< Input - the name of the new mesh, a NULL value
                            is a flag to use the name of the source mesh */
-  FC_Mesh *new_mesh  /**< output - new mesh handle */
+  FC_Mesh *new_mesh,  /**< Output - new mesh handle */
+  FC_Variable *vertmap, /**< Output - handle to a variable on the new mesh with the vertex mapping */
+  FC_Variable *elemmap /**< Output - handle to a variable on the new mesh with the elem mapping */
 ) {
   FC_ReturnCode rc;
-  int i, j, k;
+  int i, j, k; 
   // original mesh
   int numVert, numElem, dim, numVertPerElem, numEdgePerElem, numFacePerElem;
   int subset_numVert, subset_numElem;
@@ -731,15 +869,15 @@ FC_ReturnCode fc_createSubsetMesh(
   int *LUOldToNew, *LUNewToOld;
   int* src_conns, *new_conns;
   double* src_coords, *new_coords;
-  int numSubset, numVariable, numSeqVar, *numStepPerSeq;
-  FC_Subset *subsets, new_subset;
+  int numSubset, numVariable, numSeqVar, numSeqSub, *numStepPerSeqVar, *numStepPerSeqSub;
+  FC_Subset *subsets, new_subset, **seqSubs, *new_seqSub;
   FC_Variable *variables, new_variable, **seqVars, *new_seqVar;
   _FC_DsSlot* dest_dsSlot;
   _FC_MeshSlot* src_meshSlot;
   _FC_SubSlot* subSlot;
   FC_Mesh src_mesh;
   FC_ElementType elemType;
-  FC_AssociationType assoc;
+  FC_AssociationType assoc, subset_assoc;
   int numOrig, *origIDs;
   FC_SortedIntArray list;
   int usingEdge, usingFace;
@@ -747,11 +885,19 @@ FC_ReturnCode fc_createSubsetMesh(
   // default output
   if (new_mesh)
     *new_mesh = FC_NULL_MESH;
+  if (elemmap)
+    *elemmap = FC_NULL_VARIABLE;
+  if (vertmap)
+    *vertmap = FC_NULL_VARIABLE;
   
   // check input
   subSlot = _fc_getSubSlot(subset);
   dest_dsSlot = _fc_getDsSlot(dest_ds);
-  if (subSlot == NULL || dest_dsSlot == NULL || new_mesh == NULL) {
+  if (subSlot == NULL || dest_dsSlot == NULL || new_mesh == NULL || 
+      !(doCopyVar == 1  || doCopyVar == 0) ||
+      !(doCopySeqVar == 1  || doCopySeqVar == 0) ||
+      !(doCopySubset == 1  || doCopySubset == 0) ||
+      !(doCopySeqSubset == 1  || doCopySeqSubset == 0)){
     fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
     return FC_INPUT_ERROR;
   }
@@ -790,13 +936,62 @@ FC_ReturnCode fc_createSubsetMesh(
 
   // trivial case: assoc = FC_AT_WHOLE_MESH
   if (assoc == FC_AT_WHOLE_MESH) {
-    if (numOrig > 0) 
-      return fc_copyMesh(src_mesh, dest_ds, newName, new_mesh);
-    else 
-      return FC_SUCCESS;
+    if (numOrig > 0) {
+      rc = fc_copyMesh(src_mesh, dest_ds, newName, doCopyVar, doCopySeqVar,
+		       doCopySubset, doCopySeqSubset, new_mesh);
+      if (rc != FC_SUCCESS) {
+	fc_printfErrorMessage("Failed to copy mesh");
+	return rc;
+      }
+      if (elemmap != NULL){
+	int* allelems = (int*)malloc(numElem*sizeof(int));
+	if (!allelems){
+	  return FC_MEMORY_ERROR;
+	}
+	for (i = 0; i < numElem; i++){
+	  allelems[i] = i;
+	}
+	rc = fc_createVariable(*new_mesh,"FC_ELEMENTMAP",elemmap);
+	if (rc != FC_SUCCESS){
+	  fc_printfErrorMessage("Cannot create elemmap var");
+	  return rc;
+	}
+	rc = fc_setVariableDataPtr(*elemmap, numElem,1,FC_AT_ELEMENT, FC_MT_SCALAR,
+				   FC_DT_INT, allelems);
+	if (rc != FC_SUCCESS){
+	  fc_printfErrorMessage("Cannot set elemmap var data");
+	  return rc;
+	}
+      }
+
+      if (vertmap != NULL){
+	int* allverts = (int*)malloc(numVert*sizeof(int));
+	if (!allverts){
+	  return FC_MEMORY_ERROR;
+	}
+	for (i = 0; i < numVert; i++){
+	  allverts[i] = i;
+	}
+	rc = fc_createVariable(*new_mesh,"FC_VERTEXMAP",vertmap);
+	if (rc != FC_SUCCESS){
+	  fc_printfErrorMessage("Cannot create vertmap var");
+	  return rc;
+	}
+	rc = fc_setVariableDataPtr(*vertmap, numVert,1,FC_AT_VERTEX, FC_MT_SCALAR,
+				   FC_DT_INT, allverts);
+	if (rc != FC_SUCCESS){
+	  fc_printfErrorMessage("Cannot set vertmap var data");
+	  return rc;
+	}
+      }
+    }
+
+    return FC_SUCCESS;
   }
   
   // get the elements that correspond with the subset
+  //so the change is actually based on the corresponding elements, after
+  //being subject to the doStrict constraint
   rc = fc_getSubsetMembersAsArray(subset, &numOrig, &origIDs);
   if (rc != FC_SUCCESS) {
     fc_printfErrorMessage("Failed to get subset members");
@@ -815,8 +1010,56 @@ FC_ReturnCode fc_createSubsetMesh(
     return FC_SUCCESS;
   }
   else if (subset_numElem == numElem) {
+    rc = fc_copyMesh(src_mesh, dest_ds, newName, doCopyVar, doCopySeqVar,
+		     doCopySubset, doCopySeqSubset, new_mesh);
+    if (rc != FC_SUCCESS) {
+      fc_printfErrorMessage("Failed to copy mesh");
+      return rc;
+    }
     free(elemLUNewToOld);
-    return fc_copyMesh(src_mesh, dest_ds, newName, new_mesh);
+
+    if (elemmap != NULL){
+      int *allelems = (int*)malloc(numElem*sizeof(int));
+      if (!allelems){
+	return FC_MEMORY_ERROR;
+      }
+      for (i = 0; i < numElem; i++){
+	allelems[i] = i;
+      }
+      rc = fc_createVariable(*new_mesh,"FC_ELEMENTMAP",elemmap);
+      if (rc != FC_SUCCESS){
+	fc_printfErrorMessage("Cannot create elemmap var");
+	return rc;
+      }
+      rc = fc_setVariableDataPtr(*elemmap, numElem,1,FC_AT_ELEMENT, FC_MT_SCALAR,
+				 FC_DT_INT, allelems);
+      if (rc != FC_SUCCESS){
+	fc_printfErrorMessage("Cannot set elemmap var data");
+	return rc;
+      }
+    }
+
+    if (vertmap != NULL){
+      int* allverts = (int*)malloc(numVert*sizeof(int));
+      if (!allverts){
+	return FC_MEMORY_ERROR;
+      }
+      for (i = 0; i < numVert; i++){
+	allverts[i] = i;
+      }
+      rc = fc_createVariable(*new_mesh,"FC_VERTEXMAP",vertmap);
+      if (rc != FC_SUCCESS){
+	fc_printfErrorMessage("Cannot create vertmap var");
+	return rc;
+      }
+      rc = fc_setVariableDataPtr(*vertmap, numVert,1,FC_AT_VERTEX, FC_MT_SCALAR,
+				 FC_DT_INT, allverts);
+      if (rc != FC_SUCCESS){
+	fc_printfErrorMessage("Cannot set vertmap var data");
+	return rc;
+      }
+    }
+    return FC_SUCCESS;
   }
 
   // more mesh info
@@ -838,7 +1081,7 @@ FC_ReturnCode fc_createSubsetMesh(
   for (i = 0; i < subset_numElem; i++) 
     elemLUOldToNew[elemLUNewToOld[i]] = i;
 
-  // Figure out which vertices are going to be kept & make lookup tables
+ // Figure out which vertices are going to be kept & make lookup tables
   fc_initSortedIntArray(&list);
   for (i = 0; i < subset_numElem; i++) {
     int ret = fc_addIntArrayToSortedIntArray(&list, numVertPerElem,
@@ -897,14 +1140,59 @@ FC_ReturnCode fc_createSubsetMesh(
   if (rc != FC_SUCCESS)
     return rc;
 
+  if (elemmap != NULL){
+    rc = fc_createVariable(*new_mesh,"FC_ELEMENTMAP",elemmap);
+    if (rc != FC_SUCCESS){
+      fc_printfErrorMessage("Cannot create elemmap var");
+      return rc;
+    }
+    rc = fc_setVariableDataPtr(*elemmap, subset_numElem,1,FC_AT_ELEMENT, FC_MT_SCALAR,
+			       FC_DT_INT, (void*)elemLUNewToOld);
+    if (rc != FC_SUCCESS){
+      fc_printfErrorMessage("Cannot set elemmap var data");
+      return rc;
+    }
+  }
+
+  if (vertmap != NULL){
+    rc = fc_createVariable(*new_mesh,"FC_VERTEXMAP",vertmap);
+    if (rc != FC_SUCCESS){
+      fc_printfErrorMessage("Cannot create vertmap var");
+      return rc;
+    }
+    rc = fc_setVariableDataPtr(*vertmap, subset_numVert,1,FC_AT_VERTEX, FC_MT_SCALAR,
+			       FC_DT_INT, (void*)vertLUNewToOld);
+    if (rc != FC_SUCCESS){
+      fc_printfErrorMessage("Cannot set vertmap var data");
+      return rc;
+    }
+  }
+
+  if (doCopyVar == 0 && doCopySeqVar == 0 && doCopySubset == 0 && doCopySeqSubset == 0){
+    //free stuff and exit
+    free(vertLUOldToNew);
+    free(edgeLUOldToNew);
+    free(faceLUOldToNew);
+    free(elemLUOldToNew);
+    free(edgeLUNewToOld);
+    free(faceLUNewToOld);
+    if (elemmap == NULL) free(elemLUNewToOld);
+    if (vertmap == NULL) free(vertLUNewToOld);
+    return FC_SUCCESS;
+  }
+
+
   // Get subsets & variables for use now & later
   rc = fc_getSubsets(src_mesh, &numSubset, &subsets);
+  if (rc != FC_SUCCESS)
+    return rc;
+  rc = fc_getSeqSubsets(src_mesh, &numSeqSub, &numStepPerSeqSub, &seqSubs);
   if (rc != FC_SUCCESS)
     return rc;
   rc = fc_getVariables(src_mesh, &numVariable, &variables);
   if (rc != FC_SUCCESS)
     return rc;
-  rc = fc_getSeqVariables(src_mesh, &numSeqVar, &numStepPerSeq, &seqVars);
+  rc = fc_getSeqVariables(src_mesh, &numSeqVar, &numStepPerSeqVar, &seqVars);
   if (rc != FC_SUCCESS)
     return rc;
 
@@ -912,27 +1200,43 @@ FC_ReturnCode fc_createSubsetMesh(
   // subsets or variables
   usingEdge = 0;
   usingFace = 0;
-  for (i = 0; i < numSubset; i++) {
-    fc_getSubsetInfo(subsets[i], NULL, NULL, &assoc);
-    if (assoc == FC_AT_EDGE)
-      usingEdge = 1;
-    else if (assoc == FC_AT_FACE)
-      usingFace = 1;
+
+  if (doCopySubset){
+    for (i = 0; i < numSubset; i++) {
+      fc_getSubsetInfo(subsets[i], NULL, NULL, &assoc);
+      if (assoc == FC_AT_EDGE)
+	usingEdge = 1;
+      else if (assoc == FC_AT_FACE)
+	usingFace = 1;
+    }
   }
-  for (i = 0; i < numVariable; i++) {
-    fc_getVariableInfo(variables[i], NULL, NULL, &assoc, NULL, NULL);
-    if (assoc == FC_AT_EDGE)
-      usingEdge = 1;
-    else if (assoc == FC_AT_FACE)
-      usingFace = 1;
-  }    
-  for (i = 0; i < numSeqVar; i++) {
-    fc_getVariableInfo(seqVars[i][0], NULL, NULL, &assoc, NULL, NULL);
-    if (assoc == FC_AT_EDGE)
-      usingEdge = 1;
-    else if (assoc == FC_AT_FACE)
-      usingFace = 1;
-  }    
+  if (doCopySeqSubset){
+    for (i = 0; i < numSeqSub; i++) {
+      fc_getSubsetInfo(seqSubs[i][0], NULL, NULL, &assoc);
+      if (assoc == FC_AT_EDGE)
+	usingEdge = 1;
+      else if (assoc == FC_AT_FACE)
+	usingFace = 1;
+    }
+  }
+  if (doCopyVar){
+    for (i = 0; i < numVariable; i++) {
+      fc_getVariableInfo(variables[i], NULL, NULL, &assoc, NULL, NULL);
+      if (assoc == FC_AT_EDGE)
+	usingEdge = 1;
+      else if (assoc == FC_AT_FACE)
+	usingFace = 1;
+    }    
+  }
+  if (doCopySeqVar){
+    for (i = 0; i < numSeqVar; i++) {
+      fc_getVariableInfo(seqVars[i][0], NULL, NULL, &assoc, NULL, NULL);
+      if (assoc == FC_AT_EDGE)
+	usingEdge = 1;
+      else if (assoc == FC_AT_FACE)
+	usingFace = 1;
+    }    
+  }
   if (usingEdge) {
     int numEdge, new_numElement, new_numEdge;
     int *src_elemToEdgeConns, *new_elemToEdgeConns;
@@ -1023,262 +1327,407 @@ FC_ReturnCode fc_createSubsetMesh(
   // copy stuff -- a lot like in fc_copyMesh
 
   // copy subsets
-  for (i = 0; i < numSubset; i++) {
-    int numMember, *memberIDs;
-    char* subset_name;
-    FC_AssociationType subset_assoc;
-
-    // create the new subset
-    rc = fc_getSubsetAssociationType(subsets[i], &subset_assoc);
-    if (rc != FC_SUCCESS)
-      return rc;
-    rc = fc_getSubsetName(subsets[i], &subset_name);
-    if (rc != FC_SUCCESS)
-      return rc;
-    rc = fc_createSubset(*new_mesh, subset_name, subset_assoc, &new_subset);
-    free(subset_name);
-    if (rc != FC_SUCCESS)
-      return rc;
+  if (doCopySubset){
+    for (i = 0; i < numSubset; i++) {
+      int numMember, *memberIDs;
+      char* subset_name;
+      
+      // create the new subset
+      rc = fc_getSubsetAssociationType(subsets[i], &subset_assoc);
+      if (rc != FC_SUCCESS)
+	return rc;
+      rc = fc_getSubsetName(subsets[i], &subset_name);
+      if (rc != FC_SUCCESS)
+	return rc;
+      rc = fc_createSubset(*new_mesh, subset_name, subset_assoc, &new_subset);
+      free(subset_name);
+      if (rc != FC_SUCCESS)
+	return rc;
     
-    // Add the members that are in the new subset (i.e. have a new ID)
-    switch (subset_assoc) {
-    case FC_AT_VERTEX:   LUOldToNew = vertLUOldToNew;   break;
-    case FC_AT_EDGE:     LUOldToNew = edgeLUOldToNew;   break;
-    case FC_AT_FACE:     LUOldToNew = faceLUOldToNew;   break;
-    case FC_AT_ELEMENT:  LUOldToNew = elemLUOldToNew;   break;
-    case FC_AT_WHOLE_MESH:    LUOldToNew = wholeLUOldToNew;  break;
-    default:
-      fc_printfErrorMessage("Should never reach this point!");
-      return rc;
-    }
-    rc = fc_getSubsetMembersAsArray(subsets[i], &numMember, &memberIDs);
-    if (rc != FC_SUCCESS)
-      return rc;
-    for (j = 0; j < numMember; j++) {
-      if (LUOldToNew[memberIDs[j]] > -1) {
-        rc = fc_addMemberToSubset(new_subset, LUOldToNew[memberIDs[j]]);
-        if (rc != FC_SUCCESS)
-          return rc;
+      // Add the members that are in the new subset (i.e. have a new ID)
+      switch (subset_assoc) {
+      case FC_AT_VERTEX:   LUOldToNew = vertLUOldToNew;   break;
+      case FC_AT_EDGE:     LUOldToNew = edgeLUOldToNew;   break;
+      case FC_AT_FACE:     LUOldToNew = faceLUOldToNew;   break;
+	case FC_AT_ELEMENT:  LUOldToNew = elemLUOldToNew;   break;
+	case FC_AT_WHOLE_MESH:    LUOldToNew = wholeLUOldToNew;  break;
+      default:
+	fc_printfErrorMessage("Should never reach this point!");
+	return rc;
       }
+      rc = fc_getSubsetMembersAsArray(subsets[i], &numMember, &memberIDs);
+      if (rc != FC_SUCCESS)
+	return rc;
+      for (j = 0; j < numMember; j++) {
+	if (LUOldToNew[memberIDs[j]] > -1) {
+	  rc = fc_addMemberToSubset(new_subset, LUOldToNew[memberIDs[j]]);
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	}
+      }
+      free(memberIDs);
     }
-    free(memberIDs);
+    free(subsets);
+  } else {
+    free(subsets);
   }
-  free(subsets);
+
 
   // copy the basic variables
-  for (i = 0; i < numVariable; i++) {
-    // do something different for the mesh 'coords as variable'
-    if (variables[i].slotID == src_meshSlot->coordVarID) {
-      rc = fc_getMeshCoordsAsVariable(*new_mesh, &new_variable);
-      if (rc != FC_SUCCESS) {
-        fc_printfErrorMessage("Failed to create copy of coords variable");
-        return rc;
+  if (doCopyVar){
+    for (i = 0; i < numVariable; i++) {
+      // do something different for the mesh 'coords as variable'
+      if (variables[i].slotID == src_meshSlot->coordVarID) {
+	rc = fc_getMeshCoordsAsVariable(*new_mesh, &new_variable);
+	if (rc != FC_SUCCESS) {
+	  fc_printfErrorMessage("Failed to create copy of coords variable");
+	  return rc;
+	}
+      }
+      else { // normal path for variables
+	int numDataPoint, numComp, new_numDataPoint, size;
+	char* var_name;
+	FC_AssociationType var_assoc;
+	FC_MathType mathtype;
+	FC_DataType datatype;
+	void* src_data, *new_data;
+      
+	// make the variable
+	rc = fc_getVariableName(variables[i], &var_name);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	rc = fc_createVariable(*new_mesh, var_name, &new_variable);
+	free(var_name);
+	if (rc != FC_SUCCESS)
+	  return rc;
+
+	// get the original data
+	rc = fc_getVariableInfo(variables[i], &numDataPoint, &numComp, 
+				&var_assoc, &mathtype, &datatype);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	fc_getVariableDataPtr(variables[i], &src_data);
+	if (rc != FC_SUCCESS)
+	  return rc;
+
+	// create subset of data
+	rc = fc_getMeshNumEntity(*new_mesh, var_assoc, &new_numDataPoint);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	size = fc_sizeofDataType(datatype)*numComp;
+	new_data = malloc(new_numDataPoint*size);
+	if (new_data == NULL) {
+	  fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	  return FC_MEMORY_ERROR;
+	}
+	switch (var_assoc) {
+	case FC_AT_VERTEX:   LUNewToOld = vertLUNewToOld;   break;
+	case FC_AT_EDGE:     LUNewToOld = edgeLUNewToOld;   break;
+	case FC_AT_FACE:     LUNewToOld = faceLUNewToOld;   break;
+	case FC_AT_ELEMENT:  LUNewToOld = elemLUNewToOld;   break;
+	case FC_AT_WHOLE_MESH:    LUNewToOld = wholeLUNewToOld;  break;
+	default:
+	  fc_printfErrorMessage("Should never reach this point!");
+	  return rc;
+	}
+	for (j = 0; j < new_numDataPoint; j++)
+	  memcpy((char*)new_data + j*size, 
+		 (char*)src_data + LUNewToOld[j]*size, size);
+	
+	// set the data
+	rc = fc_setVariableDataPtr(new_variable, new_numDataPoint, numComp, 
+				   var_assoc, mathtype, datatype, new_data);
+	if (rc != FC_SUCCESS)
+	  return rc;
       }
     }
-    else { // normal path for variables
-      int numDataPoint, numComp, new_numDataPoint, size;
+    free(variables);
+  } else {
+    free(variables);
+  }
+
+  
+  if (doCopySeqVar){
+    // copy the sequence vars
+    for (i = 0; i < numSeqVar; i++) {
+      int numStep;
+      FC_Sequence src_seq, dest_seq;
       char* var_name;
-      FC_AssociationType var_assoc;
-      FC_MathType mathtype;
-      FC_DataType datatype;
-      void* src_data, *new_data;
       
-      // make the variable
-      rc = fc_getVariableName(variables[i], &var_name);
+      // look for appropriate sequence on the destination dataset
+      rc = fc_getSequenceFromSeqVariable(numStepPerSeqVar[i], seqVars[i],
+					 &src_seq);
       if (rc != FC_SUCCESS)
-        return rc;
-      rc = fc_createVariable(*new_mesh, var_name, &new_variable);
+	return rc;
+      dest_seq = FC_NULL_SEQUENCE;
+      // if we are in the same dataset, reuse the same sequence
+      if (FC_HANDLE_EQUIV(dest_ds, src_meshSlot->ds)) 
+	dest_seq = src_seq;
+      else { // look for an appropriate sequence in dest_ds
+	int dest_numSequence, src_numStep, dest_numStep;
+	FC_Sequence *dest_sequences;
+	char* src_name, *dest_name;
+	FC_DataType src_dataType, dest_dataType;
+	void* src_coords_p, *dest_coords_p;
+
+	// collect src sequence info      
+	rc = fc_getSequenceName(src_seq, &src_name);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	rc = fc_getSequenceInfo(src_seq, &src_numStep, &src_dataType); 
+	if (rc != FC_SUCCESS)
+	  return rc;
+	rc = fc_getSequenceCoordsPtr(src_seq, &src_coords_p);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	
+	// compare to dest sequences
+	rc = fc_getSequences(dest_ds, &dest_numSequence, &dest_sequences);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	for (j = 0; j < dest_numSequence; j++) {
+	  rc = fc_getSequenceName(dest_sequences[j], &dest_name);
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	  rc = fc_getSequenceInfo(dest_sequences[j], &dest_numStep,
+				  &dest_dataType); 
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	  rc = fc_getSequenceCoordsPtr(dest_sequences[j], &dest_coords_p);
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	  // compare (?checking actual coords values might be too stringent)
+	  if (!strcmp(dest_name, src_name) && dest_numStep == src_numStep && 
+	      dest_dataType == src_dataType && 
+	      !memcmp(dest_coords_p, src_coords_p, 
+		      fc_sizeofDataType(src_dataType))) {
+	    free(dest_name);
+	    // passed all tests, this is the match
+	    dest_seq = dest_sequences[j];
+	    break;
+	  }
+	  free(dest_name);
+	}
+	free(dest_sequences);
+	free(src_name);
+      }
+      // if failed to find one, just copy it
+      if (FC_HANDLE_EQUIV(dest_seq, FC_NULL_SEQUENCE)) {
+	rc = fc_copySequence(src_seq, dest_ds, NULL, &dest_seq);
+	if (rc != FC_SUCCESS) {
+	  fc_printfErrorMessage("Failed to copy sequence needed for seqVar");
+	  return rc;
+	}
+      }
+
+      // make the seq variable
+      rc = fc_getVariableName(seqVars[i][0], &var_name);
+      if (rc != FC_SUCCESS)
+	return rc;
+      rc = fc_createSeqVariable(*new_mesh, dest_seq, var_name, &numStep,
+				&new_seqVar);
       free(var_name);
       if (rc != FC_SUCCESS)
-        return rc;
-
-      // get the original data
-      rc = fc_getVariableInfo(variables[i], &numDataPoint, &numComp, 
-                              &var_assoc, &mathtype, &datatype);
-      if (rc != FC_SUCCESS)
-        return rc;
-      fc_getVariableDataPtr(variables[i], &src_data);
-      if (rc != FC_SUCCESS)
-        return rc;
-
-      // create subset of data
-      rc = fc_getMeshNumEntity(*new_mesh, var_assoc, &new_numDataPoint);
-      if (rc != FC_SUCCESS)
-        return rc;
-      size = fc_sizeofDataType(datatype)*numComp;
-      new_data = malloc(new_numDataPoint*size);
-      if (new_data == NULL) {
-        fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
-        return FC_MEMORY_ERROR;
-      }
-      switch (var_assoc) {
-      case FC_AT_VERTEX:   LUNewToOld = vertLUNewToOld;   break;
-      case FC_AT_EDGE:     LUNewToOld = edgeLUNewToOld;   break;
-      case FC_AT_FACE:     LUNewToOld = faceLUNewToOld;   break;
-      case FC_AT_ELEMENT:  LUNewToOld = elemLUNewToOld;   break;
-      case FC_AT_WHOLE_MESH:    LUNewToOld = wholeLUNewToOld;  break;
-      default:
-        fc_printfErrorMessage("Should never reach this point!");
-        return rc;
-      }
-      for (j = 0; j < new_numDataPoint; j++)
-        memcpy((char*)new_data + j*size, 
-               (char*)src_data + LUNewToOld[j]*size, size);
+	return rc;
       
-      // set the data
-      rc = fc_setVariableDataPtr(new_variable, new_numDataPoint, numComp, 
-                                 var_assoc, mathtype, datatype, new_data);
-      if (rc != FC_SUCCESS)
-        return rc;
-    }
-  }
-  free(variables);
+      // set data on steps
+      for (j = 0; j < numStepPerSeqVar[i]; j++) {
+	int numDataPoint, numComp, new_numDataPoint, size;
+	FC_AssociationType var_assoc;
+	FC_MathType mathtype;
+	FC_DataType datatype;
+	void* src_data, *new_data;
 
-  // copy the sequence vars
-  for (i = 0; i < numSeqVar; i++) {
-    int numStep;
-    FC_Sequence src_seq, dest_seq;
-    char* var_name;
-
-    // look for appropriate sequence on the destination dataset
-    rc = fc_getSequenceFromSeqVariable(numStepPerSeq[i], seqVars[i],
-                                       &src_seq);
-    if (rc != FC_SUCCESS)
-      return rc;
-    dest_seq = FC_NULL_SEQUENCE;
-    // if we are in the same dataset, reuse the same sequence
-    if (FC_HANDLE_EQUIV(dest_ds, src_meshSlot->ds)) 
-      dest_seq = src_seq;
-    else { // look for an appropriate sequence in dest_ds
-      int dest_numSequence, src_numStep, dest_numStep;
-      FC_Sequence *dest_sequences;
-      char* src_name, *dest_name;
-      FC_DataType src_dataType, dest_dataType;
-      void* src_coords_p, *dest_coords_p;
-
-      // collect src sequence info      
-      rc = fc_getSequenceName(src_seq, &src_name);
-      if (rc != FC_SUCCESS)
-        return rc;
-      rc = fc_getSequenceInfo(src_seq, &src_numStep, &src_dataType); 
-      if (rc != FC_SUCCESS)
-        return rc;
-      rc = fc_getSequenceCoordsPtr(src_seq, &src_coords_p);
-      if (rc != FC_SUCCESS)
-        return rc;
- 
-      // compare to dest sequences
-      rc = fc_getSequences(dest_ds, &dest_numSequence, &dest_sequences);
-      if (rc != FC_SUCCESS)
-        return rc;
-      for (j = 0; j < dest_numSequence; j++) {
-        rc = fc_getSequenceName(dest_sequences[j], &dest_name);
-        if (rc != FC_SUCCESS)
-          return rc;
-        rc = fc_getSequenceInfo(dest_sequences[j], &dest_numStep,
-                                &dest_dataType); 
-        if (rc != FC_SUCCESS)
-          return rc;
-        rc = fc_getSequenceCoordsPtr(dest_sequences[j], &dest_coords_p);
-        if (rc != FC_SUCCESS)
-          return rc;
-        // compare (?checking actual coords values might be too stringent)
-        if (!strcmp(dest_name, src_name) && dest_numStep == src_numStep && 
-            dest_dataType == src_dataType && 
-            !memcmp(dest_coords_p, src_coords_p, 
-                    fc_sizeofDataType(src_dataType))) {
-          free(dest_name);
-          // passed all tests, this is the match
-          dest_seq = dest_sequences[j];
-          break;
-        }
-        free(dest_name);
-      }
-      free(dest_sequences);
-      free(src_name);
-    }
-    // if failed to find one, just copy it
-    if (FC_HANDLE_EQUIV(dest_seq, FC_NULL_SEQUENCE)) {
-      rc = fc_copySequence(src_seq, dest_ds, NULL, &dest_seq);
-      if (rc != FC_SUCCESS) {
-        fc_printfErrorMessage("Failed to copy sequence needed for seqVar");
-        return rc;
-      }
-    }
-
-    // make the seq variable
-    rc = fc_getVariableName(seqVars[i][0], &var_name);
-    if (rc != FC_SUCCESS)
-      return rc;
-    rc = fc_createSeqVariable(*new_mesh, dest_seq, var_name, &numStep,
-                              &new_seqVar);
-    free(var_name);
-    if (rc != FC_SUCCESS)
-      return rc;
-
-    // set data on steps
-    for (j = 0; j < numStepPerSeq[i]; j++) {
-      int numDataPoint, numComp, new_numDataPoint, size;
-      FC_AssociationType var_assoc;
-      FC_MathType mathtype;
-      FC_DataType datatype;
-      void* src_data, *new_data;
-
-      // get the original data
-      rc = fc_getVariableInfo(seqVars[i][j], &numDataPoint, &numComp, 
-                              &var_assoc, &mathtype, &datatype);
-      if (rc != FC_SUCCESS)
-        return rc;
-      fc_getVariableDataPtr(seqVars[i][j], &src_data);
-      if (rc != FC_SUCCESS)
-        return rc;
+	// get the original data
+	rc = fc_getVariableInfo(seqVars[i][j], &numDataPoint, &numComp, 
+				&var_assoc, &mathtype, &datatype);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	fc_getVariableDataPtr(seqVars[i][j], &src_data);
+	if (rc != FC_SUCCESS)
+	  return rc;
     
-      // create subset of data
-      rc = fc_getMeshNumEntity(*new_mesh, var_assoc, &new_numDataPoint);
-      if (rc != FC_SUCCESS)
-        return rc;
-      size = fc_sizeofDataType(datatype)*numComp;
-      new_data = malloc(new_numDataPoint*size);
-      if (new_data == NULL) {
-        fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
-        return FC_MEMORY_ERROR;
+	// create subset of data
+	rc = fc_getMeshNumEntity(*new_mesh, var_assoc, &new_numDataPoint);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	size = fc_sizeofDataType(datatype)*numComp;
+	new_data = malloc(new_numDataPoint*size);
+	if (new_data == NULL) {
+	  fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	  return FC_MEMORY_ERROR;
+	}
+	switch (var_assoc) {
+	case FC_AT_VERTEX:   LUNewToOld = vertLUNewToOld;   break;
+	case FC_AT_EDGE:     LUNewToOld = edgeLUNewToOld;   break;
+	case FC_AT_FACE:     LUNewToOld = faceLUNewToOld;   break;
+	case FC_AT_ELEMENT:  LUNewToOld = elemLUNewToOld;   break;
+	case FC_AT_WHOLE_MESH:    LUNewToOld = wholeLUNewToOld;  break;
+	default:
+	  fc_printfErrorMessage("Should never reach this point!");
+	  return rc;
+	}
+	for (k = 0; k < new_numDataPoint; k++)
+	  memcpy((char*)new_data + k*size, 
+		 (char*)src_data + LUNewToOld[k]*size, size);
+	
+	// set the data
+	rc = fc_setVariableDataPtr(new_seqVar[j], new_numDataPoint, numComp, 
+				   var_assoc, mathtype, datatype, new_data);
+	if (rc != FC_SUCCESS)
+	  return rc;
       }
-      switch (var_assoc) {
-      case FC_AT_VERTEX:   LUNewToOld = vertLUNewToOld;   break;
-      case FC_AT_EDGE:     LUNewToOld = edgeLUNewToOld;   break;
-      case FC_AT_FACE:     LUNewToOld = faceLUNewToOld;   break;
-      case FC_AT_ELEMENT:  LUNewToOld = elemLUNewToOld;   break;
-      case FC_AT_WHOLE_MESH:    LUNewToOld = wholeLUNewToOld;  break;
-      default:
-        fc_printfErrorMessage("Should never reach this point!");
-        return rc;
-      }
-      for (k = 0; k < new_numDataPoint; k++)
-        memcpy((char*)new_data + k*size, 
-               (char*)src_data + LUNewToOld[k]*size, size);
-
-      // set the data
-      rc = fc_setVariableDataPtr(new_seqVar[j], new_numDataPoint, numComp, 
-                                 var_assoc, mathtype, datatype, new_data);
-      if (rc != FC_SUCCESS)
-        return rc;
+      free(new_seqVar);
+      free(seqVars[i]);
     }
-    free(new_seqVar);
-    free(seqVars[i]);
+    free(numStepPerSeqVar);
+    free(seqVars);
+  } else {
+    for(i = 0; i < numSeqVar; i++)
+      free(seqVars[i]);
+    free(numStepPerSeqVar);
+    free(seqVars);
   }
-  free(numStepPerSeq);
-  free(seqVars);
+
+
+
+  // copy the sequence subsets
+  if (doCopySeqSubset){
+    for (i = 0; i < numSeqSub; i++) {
+      int numStep;
+      FC_Sequence src_seq, dest_seq;
+      char* sub_name;
+      
+      // look for appropriate sequence on the destination dataset
+      rc = fc_getSequenceFromSeqSubset(numStepPerSeqSub[i], seqSubs[i],
+                                       &src_seq);
+      if (rc != FC_SUCCESS)
+	return rc;
+      dest_seq = FC_NULL_SEQUENCE;
+      // if we are in the same dataset, reuse the same sequence
+      if (FC_HANDLE_EQUIV(dest_ds, src_meshSlot->ds)) 
+	dest_seq = src_seq;
+      else { // look for an appropriate sequence in dest_ds
+	int dest_numSequence, src_numStep, dest_numStep;
+	FC_Sequence *dest_sequences;
+	char* src_name, *dest_name;
+	FC_DataType src_dataType, dest_dataType;
+	void* src_coords_p, *dest_coords_p;
+	
+	// collect src sequence info      
+	rc = fc_getSequenceName(src_seq, &src_name);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	rc = fc_getSequenceInfo(src_seq, &src_numStep, &src_dataType); 
+	if (rc != FC_SUCCESS)
+	  return rc;
+	rc = fc_getSequenceCoordsPtr(src_seq, &src_coords_p);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	
+	// compare to dest sequences
+	rc = fc_getSequences(dest_ds, &dest_numSequence, &dest_sequences);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	for (j = 0; j < dest_numSequence; j++) {
+	  rc = fc_getSequenceName(dest_sequences[j], &dest_name);
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	  rc = fc_getSequenceInfo(dest_sequences[j], &dest_numStep,
+				  &dest_dataType); 
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	  rc = fc_getSequenceCoordsPtr(dest_sequences[j], &dest_coords_p);
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	  // compare (?checking actual coords values might be too stringent)
+	  if (!strcmp(dest_name, src_name) && dest_numStep == src_numStep && 
+	      dest_dataType == src_dataType && 
+	      !memcmp(dest_coords_p, src_coords_p, 
+		      fc_sizeofDataType(src_dataType))) {
+	    free(dest_name);
+	    // passed all tests, this is the match
+	    dest_seq = dest_sequences[j];
+	    break;
+	  }
+	  free(dest_name);
+	}
+	free(dest_sequences);
+	free(src_name);
+      }
+      // if failed to find one, just copy it
+      if (FC_HANDLE_EQUIV(dest_seq, FC_NULL_SEQUENCE)) {
+	rc = fc_copySequence(src_seq, dest_ds, NULL, &dest_seq);
+	if (rc != FC_SUCCESS) {
+	  fc_printfErrorMessage("Failed to copy sequence needed for seqVar");
+	  return rc;
+	}
+      }
+
+      // make the seq sub
+      rc = fc_getSubsetName(seqSubs[i][0], &sub_name);
+      if (rc != FC_SUCCESS)
+	return rc;
+      rc = fc_getSubsetAssociationType(seqSubs[i][0], &subset_assoc);
+      if (rc != FC_SUCCESS)
+	return rc;
+      rc = fc_createSeqSubset(*new_mesh, dest_seq, sub_name, subset_assoc, &numStep,
+                              &new_seqSub);
+      free(sub_name);
+      if (rc != FC_SUCCESS)
+	return rc;
+      
+      // set data on steps
+      for (j = 0; j < numStepPerSeqSub[i]; j++) {
+	int numMember, *memberIDs;
+	
+	// get the original data
+	// Add the members that are in the new subset (i.e. have a new ID)
+	switch (subset_assoc) {
+	case FC_AT_VERTEX:   LUOldToNew = vertLUOldToNew;   break;
+	case FC_AT_EDGE:     LUOldToNew = edgeLUOldToNew;   break;
+	case FC_AT_FACE:     LUOldToNew = faceLUOldToNew;   break;
+	case FC_AT_ELEMENT:  LUOldToNew = elemLUOldToNew;   break;
+	case FC_AT_WHOLE_MESH:    LUOldToNew = wholeLUOldToNew;  break;
+	default:
+	  fc_printfErrorMessage("Should never reach this point!");
+	  return rc;
+	}
+	rc = fc_getSubsetMembersAsArray(seqSubs[i][j], &numMember, &memberIDs);
+	if (rc != FC_SUCCESS)
+	  return rc;
+	for (k = 0; k < numMember; k++) {
+	  if (LUOldToNew[memberIDs[k]] > -1) {
+	    rc = fc_addMemberToSubset(new_seqSub[j], LUOldToNew[memberIDs[k]]);
+	    if (rc != FC_SUCCESS)
+	      return rc;
+	  }
+	}
+	if (memberIDs) free(memberIDs); //could have been empty subset
+      }
+      free(new_seqSub);
+      free(seqSubs[i]);
+    }
+    free(numStepPerSeqSub);
+    free(seqSubs);
+  } else {
+    for (i = 0; i < numSeqSub; i++)
+      free(seqSubs[i]);
+    free(numStepPerSeqSub);
+    free(seqSubs);
+  }
+
+  
 
   // cleanup
-  free(vertLUOldToNew);
-  free(edgeLUOldToNew);
-  free(faceLUOldToNew);
-  free(elemLUOldToNew);
-  free(vertLUNewToOld);
-  free(edgeLUNewToOld);
-  free(faceLUNewToOld);
-  free(elemLUNewToOld);
-
+  if (vertLUOldToNew) free(vertLUOldToNew);
+  if (edgeLUOldToNew) free(edgeLUOldToNew);
+  if (faceLUOldToNew) free(faceLUOldToNew);
+  if (elemLUOldToNew) free(elemLUOldToNew);
+  if (edgeLUNewToOld) free(edgeLUNewToOld);
+  if (faceLUNewToOld) free(faceLUNewToOld);
+  if (elemmap == NULL) free(elemLUNewToOld);
+  if (vertmap == NULL) free(vertLUNewToOld);
   return FC_SUCCESS;
 }
 
@@ -1406,7 +1855,309 @@ FC_ReturnCode fc_createSimpleHexMesh(
   return FC_SUCCESS;
 }
 
+
+/**
+ * \ingroup  PrivateMesh
+ * \brief Set coordinates for a sphere mesh.
+ * 
+ * \description  
+ *
+ *    This function creates a spehere mesh.
+ *
+ *  Note: numVerts must equal sqrt((numVerts-2)^2)+2
+ *  Note: the user supplies the coords array. This function just fills it in
+ *        (no boundary checks are performed)
+ *
+ * \modifications 
+ *   - 04/08/2008   CDU Created
+ */
+
+FC_ReturnCode _fc_setSphereCoords(
+ int numVerts,      /**< Input - the number of vertices that describe the sphere. */
+ FC_Coords center,  /**< Input - coordinate for where sphere's center is located */
+ double radius,     /**< Input - the radius of the spehere */
+ double *coords     /**< Output - the pre-allocated array that holds the vertex coordinates */
+){
+
+  int numPlane;
+  int place, zcount, i;
+  const int numDim=3;
+  double phi, theta;
+  const double toRad = (M_PI/180.0);
+ 
+  //quick check to make sure not null ptr
+  if(!center || !coords){
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_SUCCESS;
+  }
+
+  //Verify that we were given something with the right number of coordinates
+  numPlane = sqrt(numVerts-2);
+  if(numPlane*numPlane != numVerts-2){
+    fc_printfErrorMessage("%s : given a number vertices that isn't sqrt((numVerts-2)^2)+2 == numVerts", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  //Work your way down all of the planes and all the circles
+  place =0;
+  phi  =180.0/(double)(numPlane+1);
+  theta=360.0/(double)numPlane;
+  for(zcount=1; zcount<=numPlane; zcount++){
+    double zplane = cos((double)zcount*phi*toRad);
+    for(i=0;i<numPlane; i++){
+      double r=sqrt(1-zplane*zplane);
+      coords[place*numDim+0] = center[0] + radius*(r*cos(theta*(double)i*toRad));
+      coords[place*numDim+1] = center[1] + radius*(r*sin(theta*(double)i*toRad));
+      coords[place*numDim+2] = center[2] + radius*zplane;
+      //printf("(Plane %d Spot %d) <%.3lf, %.3lf, %.3lf>\n", zcount, place,
+      //     coords[place*numDim+0],coords[place*numDim+1],coords[place*numDim+2]);  
+      place++;
+    }
+  }
+  //Top
+  coords[place*numDim+0] = center[0] + 0.0;
+  coords[place*numDim+1] = center[1] + 0.0;
+  coords[place*numDim+2] = center[2] + radius;
+  place++;
+
+  //Bottom
+  coords[place*numDim+0] = center[0] + 0.0;
+  coords[place*numDim+1] = center[1] + 0.0;
+  coords[place*numDim+2] = center[2] - radius;
+  place++;
+
+  return FC_SUCCESS;
+
+}
+
+/**
+ * \ingroup  Mesh
+ * \brief Create a simple sphere mesh.
+ * 
+ * \description  
+ *
+ *    This function creates a spehere mesh.
+ *
+ *  Note: While the user can request a particular number of nodes, this function
+ *  will round the actual number of nodes to a value that matches
+ *  numNodes = sqrt(numNodes-2)^2+2.
+ *
+ * \modifications 
+ *   - 04/08/2008   CDU Created
+ */
+
+FC_ReturnCode fc_createSphereMesh(
+  FC_Dataset dataset,  /**< Input - Dataset handle to associate sphere with */
+  char *newName,       /**< Input - the name of the new mesh */
+  FC_Coords center,    /**< Input - xyz coordinate of the sphere's center */
+  double radius,       /**< Input - radius of the sphere */
+  int requestedNodes,  /**< Input - Requested number of mesh nodes (or 0 for default) */
+  FC_Mesh *new_mesh    /**< Output - new mesh handle */
+){
+
+  const int numDim=3;
+  const int def_numNodes=38; //6^2 + 2
+
+  int i,j;
+  int    *conns;
+  double *coords;
+  int numVerts;
+  
+  int place;
+  int numPlane;
+  int numElem, numVertPerElem;
+  FC_ReturnCode rc;
+  int a,b,c,d, offset;
+  
+  //Default output
+  if(new_mesh)
+    *new_mesh = FC_NULL_MESH;
+
+  //Check input
+  if(!fc_isDatasetValid(dataset) || !newName || !center || fc_lteqd(radius,0.0) || !new_mesh){
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  //Set the requested nodes if user didn't give us anything
+  if(requestedNodes<1)
+    requestedNodes = def_numNodes;
+
+
+  numPlane = sqrt(requestedNodes);
+  numVerts = numPlane*numPlane + 2;
+  
+  //Allocate the coordinates
+  coords = (double *) calloc( numVerts*numDim, sizeof(double));
+  if(!coords){
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+    return FC_MEMORY_ERROR;
+  }
+
+  //Set the coordinates
+  rc = _fc_setSphereCoords(numVerts, center, radius, coords);
+  if(rc != FC_SUCCESS){ 
+    free(coords);
+    return rc;
+  }
+
+  //Add to the mesh
+  rc = fc_createMesh(dataset, newName, new_mesh);
+  if(rc != FC_SUCCESS){ 
+    *new_mesh = FC_NULL_MESH;
+    free(coords);
+    return rc;
+  }
+
+  //Note: if successful, we don't control coords any more
+  rc = fc_setMeshCoordsPtr(*new_mesh, numDim, numVerts, coords);
+  if(rc != FC_SUCCESS){ 
+    fc_deleteMesh(*new_mesh);
+    *new_mesh = FC_NULL_MESH;
+    free(coords);
+    return rc;
+  }
+
+  //Setup connectivity
+  numVertPerElem=3;
+  numElem = ((2*numPlane)*(numPlane-1) + //2tri/side * all planes but top/bottom
+	     (2*numPlane));               //Top and bottom
+  conns = (int *)calloc(numElem*numVertPerElem,sizeof(int));
+  if(!conns){
+    fc_deleteMesh(*new_mesh);
+    *new_mesh = FC_NULL_MESH;
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+    return FC_MEMORY_ERROR;
+  }
+
+  //Link up all the triangles (excluding top and bottom)
+  place=0;
+  for(i=1; i<numPlane; i++){   //Each plane
+    for(j=0; j<numPlane; j++){ //each point in a plane
+      a = (i*numPlane)     + j;
+      b = ((i-1)*numPlane) + j;
+      c = ((i-1)*numPlane) + (j+1)%numPlane;
+      d = (i*numPlane)     + (j+1)%numPlane;
+
+      //Top triangle
+      conns[place++] = a;
+      conns[place++] = b;
+      conns[place++] = c;
+      
+      //bottom triangle
+      conns[place++] = a;
+      conns[place++] = c;
+      conns[place++] = d;      
+      //printf("place now %d (max elem=%d) %d %d %d %d\n", place, numElem, a,b,c,d);
+    }
+  }
+
+  //Connect the top or bottom elements
+  for(i=0; i<2;i++){
+    a      = numVerts-2+i; //Top or bottom node
+    offset = (i==0) ? 0 : numVerts-2-numPlane; 
+    for(j=0;j<numPlane; j++){
+      conns[place++] = a;
+      conns[place++] = offset + j;
+      conns[place++] = offset + (j+1)%numPlane;
+    }
+  }
+  
+  //Pass the connection into the mesh. Note: if ok, don't need to free conns
+  rc = fc_setMeshElementConnsPtr(*new_mesh, FC_ET_TRI, numElem, conns);
+  if(rc != FC_SUCCESS){ 
+    fc_deleteMesh(*new_mesh);
+    *new_mesh = FC_NULL_MESH;
+    free(conns);
+    return rc;
+  }
+  return FC_SUCCESS;
+  
+}
+
+/**
+ * \ingroup  Mesh
+ * \brief Update a displacement variable for a sphere to have a new center and radius
+ * 
+ * \description  
+ *
+ *    This function sets a displacement variable for a sphere mesh so that it
+ *    reflects a new center/radius for the sphere. This operation is useful for
+ *    tracking the size and location of a feature as time progresses.
+ *
+ * \modifications 
+ *   - 04/08/2008   CDU Created
+ */
+FC_ReturnCode fc_setSphereDisplacementVariable(
+  FC_Variable displacement_var,  /**< Input - the displacement variable to be adjusted */
+  FC_Coords new_center,          /**< Input - new coordinates for center of sphere */
+  double new_radius              /**< Input - new radius for sphere */
+){
+
+  FC_Mesh mesh;
+  int dim, numVertex;
+  FC_ReturnCode rc;
+
+  double *orig_coords; //ro
+  double *new_coords;
+  int i;
+
+  //Check input
+  if(!fc_isVariableValid(displacement_var) || fc_lteqd(new_radius,0.0) || !new_center){
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+  
+  //Get basic info from variable and it's mesh
+  rc=fc_getMeshFromVariable(displacement_var, &mesh);
+  if(rc!=FC_SUCCESS) return rc;
+
+  rc=fc_getMeshInfo(mesh, NULL, &dim, &numVertex, NULL, NULL);
+  if(rc!=FC_SUCCESS) return rc;
+
+  rc=fc_getMeshCoordsPtr(mesh, &orig_coords);
+  if(rc!=FC_SUCCESS) return rc;
+
+
+  //Create space for data
+  new_coords = (double *)malloc(dim*numVertex*sizeof(double));
+  if(!new_coords){
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+    return FC_MEMORY_ERROR;
+  }
+
+  //Fill new_coords with the proper values
+  rc=_fc_setSphereCoords(numVertex, new_center, new_radius, new_coords);
+  if(rc!=FC_SUCCESS){
+    free(new_coords);
+    return rc;
+  }
+  
+  //Record the difference
+  for(i=0; i<dim*numVertex; i++){
+    new_coords[i] = new_coords[i] - orig_coords[i];
+  }
+
+  //new_coords now done. Have it absorbed into variable
+  rc=fc_setVariableDataPtr(displacement_var, numVertex, dim, 
+			   FC_AT_VERTEX, FC_MT_VECTOR, FC_DT_DOUBLE,
+			   new_coords);
+  if(rc!=FC_SUCCESS) {
+    free(new_coords);
+    return rc;
+  }
+
+  return FC_SUCCESS;
+  
+}
+
 //@}
+
+
+
+
+
+
 
 /** \name Get existing meshes. */
 //-------------------------------
@@ -1661,17 +2412,18 @@ FC_ReturnCode fc_changeMeshName(
  *
  * \modifications
  *    - 9/27/04 WSK Created.
+ *    - 03/07/08 ACG seq subsets
  */
 FC_ReturnCode fc_releaseMesh(
  FC_Mesh mesh       /**< input - mesh handle */
 ) {
   int i;
   int *numSteps;
-  FC_Subset *subsets;
+  FC_Subset *subsets, **seqSubsets;
   FC_Variable *variables, **seqVariables;
   _FC_MeshSlot* meshSlot;
   FC_AssociationType assoc;
-  int usingEdge, usingFace, numSubset, numVar, numSeqVar;
+  int usingEdge, usingFace, numSubset, numVar, numSeqVar, numSeqSub;
   
   // special case: releasing a null handle is not an error
   if ( FC_HANDLE_EQUIV(mesh, FC_NULL_MESH)) {
@@ -1703,6 +2455,19 @@ FC_ReturnCode fc_releaseMesh(
       usingFace = 1;
   }
   free(subsets);
+  fc_getSeqSubsets(mesh, &numSeqSub, &numSteps, &seqSubsets);
+  for (i = 0; i < numSeqSub; i++) {
+    fc_releaseSeqSubset(numSteps[i], seqSubsets[i]);
+    fc_getSubsetInfo(seqSubsets[i][0], NULL, NULL, &assoc);
+    if (assoc == FC_AT_EDGE)
+      usingEdge = 1;
+    else if (assoc == FC_AT_FACE) 
+      usingFace = 1;
+  }
+  free(numSteps);
+  for (i = 0; i < numSeqSub; i++)
+    free(seqSubsets[i]);
+  free(seqSubsets);
   fc_getVariables(mesh, &numVar, &variables);
   for (i = 0; i < numVar; i++) {
     fc_releaseVariable(variables[i]);
@@ -1846,6 +2611,7 @@ FC_ReturnCode fc_releaseMesh(
  *    Call when this mesh is no longer needed. This automatically deletes
  *    all of the mesh's subsets and variables.
  *
+ *
  * \modifications 
  *    - Nancy Collins, Created.
  *    - 12/01/03 WSK Changed so it removes an uncommitted mesh
@@ -1855,6 +2621,7 @@ FC_ReturnCode fc_releaseMesh(
  *        (issue warning if fc_getLibraryVerbosity()). 
  *    - 9/9/04 WSK changed name to delete. Changed behavior so that
  *      delete always deletes no matter whether on disk or not.
+ *    - 03/04/08 ACG added deleting seq subsets
   */
 FC_ReturnCode fc_deleteMesh(
  FC_Mesh mesh       /**< input - mesh handle */
@@ -1863,8 +2630,8 @@ FC_ReturnCode fc_deleteMesh(
   int i, j;
   _FC_MeshSlot* meshSlot;
   _FC_DsSlot* dsSlot;
-  int numSubset, numVar, numSeqVar, *numStepPerVar;
-  FC_Subset* subsets;
+  int numSubset, numVar, numSeqVar, *numStepPerVar, numSeqSub, *numStepPerSub;
+  FC_Subset *subsets, **seqSubsets;
   FC_Variable *variables, **seqVariables;
 
   // special case: deleting a null handle is not an error
@@ -1893,7 +2660,21 @@ FC_ReturnCode fc_deleteMesh(
       return rc;
   }
   free(subsets);
-  
+
+  // delete member seq subs
+  rc = fc_getSeqSubsets(mesh, &numSeqSub, &numStepPerSub, &seqSubsets);
+  if (rc != FC_SUCCESS)
+    return rc;
+  for (i = 0; i < numSeqSub; i++) {
+    rc = fc_deleteSeqSubset(numStepPerSub[i], seqSubsets[i]);
+    if (rc != FC_SUCCESS)
+      return rc;
+  }
+  free(numStepPerSub);
+  for (i = 0; i < numSeqSub; i++)
+    free(seqSubsets[i]);
+  free(seqSubsets);
+
   // delete member variables
   rc = fc_getVariables(mesh, &numVar, &variables);
   if (rc != FC_SUCCESS)
@@ -3218,6 +3999,7 @@ FC_ReturnCode fc_getMeshElementFaceOrientsPtr(
  * \modifications 
  *    - 11/20/03 WSK Created.
  *    - 10/31/07 ACG optional precision
+ *    - 03/03/08 ACG seq subset
  */
 FC_ReturnCode fc_printMesh(
   FC_Mesh mesh,         /**< input - mesh */
@@ -3233,7 +4015,7 @@ FC_ReturnCode fc_printMesh(
   FC_ReturnCode rc;
   int i, j;
   _FC_MeshSlot* meshSlot;
-  int topodim, dim, numVertex, numElement, numSubset, numVar, numSeqVar;
+  int topodim, dim, numVertex, numElement, numSubset, numSeqSubset, numVar, numSeqVar;
   int numEdge, numFace;
   FC_ElementType elemType, faceType;
   int* ebuf, *numVertPerFace, maxNum;
@@ -3278,6 +4060,12 @@ FC_ReturnCode fc_printMesh(
                           meshSlot->header.name);
     return rc;
   }
+  rc = fc_getNumSeqSubset(mesh, &numSeqSubset);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get seq subsets for mesh '%s'",
+                          meshSlot->header.name);
+    return rc;
+  }
   rc = fc_getNumVariable(mesh, &numVar);
   if (rc != FC_SUCCESS) {
     fc_printfErrorMessage("Failed to get variables for mesh '%s'",
@@ -3293,7 +4081,7 @@ FC_ReturnCode fc_printMesh(
   printf("%snumVertex = %d, dim = %d\n", INDENT_STR, numVertex, dim);
   printf("%snumElement = %d, topodim = %d, elemType = %s\n", INDENT_STR,
          numElement, topodim, fc_getElementTypeText(elemType));
-  printf("%snumSubset = %d\n", INDENT_STR, numSubset);
+  printf("%snumSubset = %d, numSeqSubset = %d\n", INDENT_STR, numSubset, numSeqSubset);
   printf("%snumVar = %d, numSeqVar = %d\n", INDENT_STR, numVar, numSeqVar);
   fflush(NULL);
   
@@ -4933,6 +5721,7 @@ FC_ReturnCode _fc_buildMeshElementNeighborsViaEntity(
  *
  * \modifications  
  *   APR-30-2003  W Koegler  Created. 
+ *   03-03-08 ACG adding sequence subsets
  */
 void _fc_initMeshSlot(
   _FC_MeshSlot* meshSlot    /**< input - the mtable slot to initialize */
@@ -4985,6 +5774,9 @@ void _fc_initMeshSlot(
     //---
     meshSlot->numSub = 0;
     meshSlot->subIDs = NULL;
+    meshSlot->numSeqSub = 0;
+    meshSlot->numStepPerSeqSub = NULL;
+    meshSlot->seqSubIDs = NULL;
     //---
     meshSlot->coordVarID = -1;
     meshSlot->numBasicVar = 0;
@@ -5165,6 +5957,7 @@ void _fc_releaseMeshSlot(
  * \modifications  
  *   - Aug 6, 2002  W Koegler  Created
  *   - 2003-APR-31  W Koegler  Made more comprehensive
+ *   - 03-03-08 ACG added seqSubsets
  */
 void _fc_clearMeshSlot(
  _FC_MeshSlot* meshSlotp       /**< input - vtable pointer */
@@ -5178,6 +5971,11 @@ void _fc_clearMeshSlot(
     // free other dynamic arrays
     if (meshSlotp->subIDs)
       free(meshSlotp->subIDs);
+    if (meshSlotp->seqSubIDs) {
+      for (i = 0; i < meshSlotp->numSeqSub; i++)
+	free(meshSlotp->seqSubIDs[i]);
+      free(meshSlotp->seqSubIDs);
+    }
     if (meshSlotp->basicVarIDs)
       free(meshSlotp->basicVarIDs);
     if (meshSlotp->numStepPerSeqVar)
@@ -5330,6 +6128,7 @@ FC_ReturnCode _fc_deleteMeshSlot(
  * \modifications 
  *    - Nancy Collins Created.
  *    - 2003-NOV-13  WSK  Fixed up.
+ *    - 03-03-08 ACG added seqSubset
  */
 void _fc_printMeshTable(
   char *label   /**< Input - label for this version the table (without a
@@ -5418,6 +6217,20 @@ void _fc_printMeshTable(
       for (j = 1; j < meshSlot->numSub; j++)
         fprintf(stderr, ", %d", meshSlot->subIDs[j]);
       fprintf(stderr, " }\n");
+    }
+    fprintf(stderr, "     numSeqSub = %d, seqSubIDs = ", meshSlot->numSeqSub);
+    if (!meshSlot->seqSubIDs)
+      fprintf(stderr, "NULL\n");
+    else {
+      fprintf(stderr, "{\n");
+      for (j = 0; j < meshSlot->numSeqSub; j++) {
+	fprintf(stderr, "         seqSubIDs[%d] = { %d", j, 
+                  meshSlot->seqSubIDs[j][0]);
+	for (k = 1; k < meshSlot->numStepPerSeqSub[j]; k++)
+	  fprintf(stderr, ", %d", meshSlot->seqSubIDs[j][k]);
+	fprintf(stderr, " }\n");
+      }
+      fprintf(stderr, "     }\n");
     }
     fprintf(stderr, "     coordVarID = %d\n", meshSlot->coordVarID); 
     fprintf(stderr, "     numBasicVar = %d, basicVarIDs = ", 

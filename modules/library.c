@@ -86,6 +86,42 @@
  */
 static int library_init = 0;
 
+
+
+/** 
+ * \ingroup PrivateLibrary
+ * \brief Global variable for counting error, warning, log, and debug messages
+ *
+ *  
+ */
+FC_LogCount _fc_log_count = {0,0,0,0};
+
+/** \name Obtain the number of error, warning, log, and debug messages that were posted. */
+//-------------------------------
+//@{
+
+/** 
+ * \ingroup Library
+ * \brief Obtain the number of error, warning, log, and debug messages that were posted. 
+ *
+ * \description
+ * 
+ *    This function prints out info about how many error, warning, log, and debug messages
+ *    were posted. The user can provide a verbosity setting to prevent
+ *
+ * \modifications
+ *    - 2/20/2008 CDU Created
+ */
+void fc_printLogCounters(FC_VerbosityLevel minLevel){
+  if( ((minLevel >= FC_ERROR_MESSAGES)   && (_fc_log_count.errors))   ||
+      ((minLevel >= FC_WARNING_MESSAGES) && (_fc_log_count.warnings)) ||
+      ((minLevel >= FC_LOG_MESSAGES)     && (_fc_log_count.logs))     ||
+      ((minLevel >= FC_DEBUG_MESSAGES)   && (_fc_log_count.debugs))      )
+    fprintf(stderr," FCLib Message Summary: %d Errors, %d Warnings, %d Logs, %d Debugs\n",
+	    _fc_log_count.errors,_fc_log_count.warnings,_fc_log_count.logs,_fc_log_count.debugs);
+}
+
+
 /**
  * \ingroup PrivateLibrary
  * \brief  Global variable for Verbosity level of the library.    
@@ -263,6 +299,7 @@ FC_ReturnCode fc_finalLibrary(
   if (rc != FC_SUCCESS) 
     fc_printfWarningMessage("Failed to finalize FileIO");
   
+
   // library is considered finalized even if error generated
   library_init = 0;
 

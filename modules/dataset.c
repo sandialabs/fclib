@@ -299,7 +299,7 @@ FC_ReturnCode fc_copyDataset(
     FC_Mesh src_mesh, new_mesh;
     _FC_MeshSlot* src_meshSlot = _fc_getMeshSlotFromID(src_dsSlot->meshIDs[i]);
     _FC_GET_HANDLE(src_mesh, src_meshSlot);
-    rc = fc_copyMesh(src_mesh, *new_ds, NULL, &new_mesh);
+    rc = fc_copyMesh(src_mesh, *new_ds, NULL, 1, 1, 1, 1, &new_mesh);
     if (rc != FC_SUCCESS) {
       fc_deleteDataset(*new_ds);
       *new_ds = FC_NULL_DATASET;

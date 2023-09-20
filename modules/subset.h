@@ -54,11 +54,24 @@ extern "C" {
 //-------------------------------
 FC_ReturnCode fc_createSubset(FC_Mesh mesh, char *subsetName, 
                      FC_AssociationType subsetAssoc, FC_Subset *subset);
+FC_ReturnCode fc_createSeqSubset(FC_Mesh mesh, FC_Sequence sequence,
+         	   char *subsetName,  FC_AssociationType subsetAssoc, 
+                   int *numStep, FC_Subset **seqSubs);
 
 // other ways to get new subsets
 //-------------------------------
 FC_ReturnCode fc_copySubset(FC_Subset subset, FC_Mesh destinationMesh, 
                      char* newSubsetName, FC_Subset *newSubset);
+FC_ReturnCode fc_copySeqSubset(int numStep, FC_Subset* srcSeqsubset,
+			       FC_Mesh destinationMesh, FC_Sequence dest_seq,
+			       char* newSubsetName, FC_Subset **newSeqSubset);
+FC_ReturnCode fc_convertSubsetsToSeqSubset(int numStep, FC_Subset* subsets,
+					   FC_Sequence sequence, char* new_name,
+					   FC_Subset** seqSubset);
+FC_ReturnCode fc_convertSeqSubsetToSubsets(int numStep,
+					   FC_Subset* seqSubset,
+					   char* new_name,
+					   FC_Subset** newSubsets);
 FC_ReturnCode fc_copySubsetWithNewAssociation(FC_Subset subset, 
 		      char* newSubsetName, FC_AssociationType new_assoc, 
                       int doStrict, FC_Subset* new_subset);
@@ -71,9 +84,14 @@ FC_ReturnCode fc_createSubsetIntersection(FC_Subset subset1, char* operation,
 // get subsets
 //-------------------------------
 FC_ReturnCode fc_getSubsets(FC_Mesh mesh, int *numSubset, FC_Subset **subsets);
+FC_ReturnCode fc_getSeqSubsets(FC_Mesh mesh, int *numSeqSubsets,
+			       int **numStepPerSub, FC_Subset ***seqSubsets);
 FC_ReturnCode fc_getNumSubset(FC_Mesh, int* numSubset);
+FC_ReturnCode fc_getNumSeqSubset(FC_Mesh mesh, int* numSeqSubset);
 FC_ReturnCode fc_getSubsetByName(FC_Mesh mesh, char* subsetName, int *numSubset,
                      FC_Subset** subset);
+FC_ReturnCode fc_getSeqSubsetByName(FC_Mesh mesh, char* subsetName, int *numSeqSubset,
+				    int **numStepPerSeq, FC_Subset*** seqSubsets);
 
 // Subset comparison
 //-------------------------------
@@ -85,6 +103,7 @@ FC_ReturnCode fc_isSubsetSuperset(FC_Subset subset_super, FC_Subset subset_sub,
 // change the name of a subset
 //-------------------------------
 FC_ReturnCode fc_changeSubsetName(FC_Subset subset, char* newName);
+FC_ReturnCode fc_changeSeqSubsetName(int numStep, FC_Subset* subset, char* newName);
 
 // add members to a subset  
 //---------------------------------
@@ -104,11 +123,14 @@ FC_ReturnCode fc_deleteMaskMembersFromSubset(FC_Subset subset,
 // release/delete subset
 //-------------------------------
 FC_ReturnCode fc_releaseSubset(FC_Subset subset);
+FC_ReturnCode fc_releaseSeqSubset(int numStep, FC_Subset* subsets);
 FC_ReturnCode fc_deleteSubset(FC_Subset subset);
+FC_ReturnCode fc_deleteSeqSubset(int numStep, FC_Subset* subsets);
 
 // Get Subset metadata
 //-------------------------
 int fc_isSubsetValid(FC_Subset subset);
+int fc_isSeqSubsetValid(int numStep, FC_Subset* seqsubset);
 FC_ReturnCode fc_getSubsetName(FC_Subset subset, char** subsetName);
 FC_ReturnCode fc_getMeshFromSubset(FC_Subset subset, FC_Mesh *mesh);
 FC_ReturnCode fc_getSubsetInfo(FC_Subset subset, int *numMember, 
@@ -117,6 +139,10 @@ FC_ReturnCode fc_getSubsetNumMember(FC_Subset subset, int *numMember);
 FC_ReturnCode fc_getSubsetMaxNumMember(FC_Subset subset, int *maxNumMember);
 FC_ReturnCode fc_getSubsetAssociationType(FC_Subset subset,
 			       FC_AssociationType *assoc);
+FC_ReturnCode fc_getSequenceFromSeqSubset(int numStep,
+				    FC_Subset *seqSubset,
+				    FC_Sequence *sequence);
+					    
 //  get/query subset members
 //---------------------------------
 int fc_isMemberInSubset(FC_Subset subset, int memberID);
@@ -130,6 +156,14 @@ FC_ReturnCode fc_getSubsetMembersAsMask(FC_Subset subset, int *maskLength,
 FC_ReturnCode fc_printSubset(FC_Subset subset, char* label, int print_members);
 FC_ReturnCode fc_printSubsetOfMesh(FC_Subset, FC_Mesh mesh);
 FC_ReturnCode fc_printSubsetOfVariable(FC_Subset, FC_Variable variable);
+
+FC_ReturnCode fc_printSeqSubsetRange(int numStep, FC_Subset *seqSubset,
+				     int range_start, int range_stop,
+				     char *label, int print_members);
+
+FC_ReturnCode fc_printSeqSubset(     int numStep, FC_Subset *seqSubset,
+				     char *label, int print_members);
+
 
 #ifdef __cplusplus
 }

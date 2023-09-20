@@ -1286,7 +1286,7 @@ START_TEST(copy_test)
   free(returnMeshes);
 
   // make a second mesh to copy to
-  rc = fc_copyMesh(mesh1, dataset, "copy mesh", &mesh2);
+  rc = fc_copyMesh(mesh1, dataset, "copy mesh", 1, 1, 1, 1, &mesh2);
   fail_unless(rc == FC_SUCCESS, "abort: failed to copy mesh");
 
   // make a third mesh we shouldn't be able to copy to - just 1 element
@@ -2501,7 +2501,7 @@ START_TEST(seq_copy_test)
   // make a second sequence & second mesh to copy to
   rc = fc_copySequence(sequence1, dataset, "copy sequence", &sequence2);
   fail_unless(rc == FC_SUCCESS, "abort: failed to copy sequence");
-  rc = fc_copyMesh(mesh1, dataset, "copy mesh", &mesh2);
+  rc = fc_copyMesh(mesh1, dataset, "copy mesh", 1, 1, 1, 1, &mesh2);
   fail_unless(rc == FC_SUCCESS, "abort: failed to copy mesh");
 
   // get a third sequence we shouldn't be able to copy to - different numStep
@@ -5402,47 +5402,203 @@ START_TEST(comps_by_name)
   FC_Variable** seqvars = NULL;
   FC_Variable* genseqvar = NULL;
   int numReturnMeshes;
-  char* names[4]= {"displacement", "velocity", "vertex ids", "stress tensor"};
-  char vector_endings[3][2] = { "x", "y", "z" };
-  int numRetVals[4] = {3,3,0,0};
-  int numSeqRetVals[4] = {3,0,0,0};
-  int numNames = 4;
+
+  char *var_dset_name            = "../data/gen_small_tri.ex2";
+  char *var_mesh_name            = "small_tri";
+  int   var_numNames             = 4;
+  char *var_names[4]             = {"displacement", "velocity", "vertex ids", "stress tensor"};
+  int   var_numRetVals[4]        = { 3,              3,          0,            3};
+  char *var_vector_endings[][3]  = { { "_x",  "_y",  "_z" },
+				     { "_x",  "_y",  "_z" },
+				     { NULL,  NULL,  NULL },
+				     { "_c0", "_c1", "_c2" } };
+
+  char *svar_dset_name           = "../data/gen_small_multivar_seq.ex2";
+  char *svar_mesh_name           = "tiny_tri";
+  int   svar_numNames            = 2;
+  char *svar_names[4]            = {"displacement per vertex", "temperature per vertex"};
+  int   svar_numRetVals[4]       = { 3,                         0};
+  char *svar_vector_endings[][3] = { { "_x",  "_y",  "_z" },
+				     { NULL,  NULL,  NULL } };
+
+
+  char *search_list[][4] = {
+    //Underscore, lowercase
+    { "a_x",   "a_y",   "a_z",   NULL    },
+    { "b_x",   "b_y",   NULL,    NULL    },
+    { "c_c0",  "c_c1",  "c_c2",  "c_c3"  },
+    { "d_t",   "d_u",   "d_v",   "d_w"   },
+    //Double underscore, lowercase
+    { "e__x",  "e__y",  "e__z",  NULL    },
+    { "f__x",  "f__y",  NULL,    NULL    },
+    { "g__c0", "g__c1", "g__c2", "g__c3" },
+    { "h__t",  "h__u",  "h__v",  "h__w"  },
+    //No underscore, lowercase
+    { "ix",    "iy",    "iz",    NULL    },
+    { "jx",    "jy",    NULL,    NULL    },
+    { "kc0",   "kc1",   "kc2",   "kc3"   },
+    { "lt",    "lu",    "lv",    "lw"    },
+    //Underscore, uppercase
+    { "A_X",   "A_Y",   "A_Z",   NULL    },
+    { "B_X",   "B_Y",   NULL,    NULL    },
+    { "C_C0",  "C_C1",  "C_C2",  "C_C3"  },
+    { "D_T",   "D_U",   "D_V",   "D_W"   },
+    //Double underscore, uppercase
+    { "E__X",  "E__Y",  "E__Z",  NULL    },
+    { "F__X",  "F__Y",  NULL,    NULL    },
+    { "G__C0", "G__C1", "G__C2", "G__C3" },
+    { "H__T",  "H__U",  "H__V",  "H__W"  },
+    //No underscore, uppercase
+    { "IX",    "IY",    "IZ",    NULL    },
+    { "JX",    "JY",    NULL,    NULL    },
+    { "KC0",   "KC1",   "KC2",   "KC3"   },
+    { "LT",    "LU",    "LV",    "LW"    },
+    //No variable name
+    { "_x",     "_y",    NULL,   NULL    }, 
+    //Mismatches: should fail                    
+    { "m_x",    "m_y",  "n_z",   NULL    }, //Different prefix
+    { "n_x",    "n_Y",  "n_z",   NULL    }, //Different suffix
+    { "p_x",    "py",    NULL,   NULL    }, //Different underscores
+    //End
+    { NULL,    NULL,    NULL,    NULL    } };
+
+  int last_good_search = 24;
+  unsigned int lastCompInGuess, lastCompInSearch, found;
+
+
+
+  
   int numgenSteps;
   int *numSteps, numVars;
   int i, j;
+  unsigned int maxExtLen, maxComp; 
 
-  rc = fc_loadDataset("../data/gen_small_tri.ex2", &dataset[0]);
+  char *searchName;
+  unsigned int extState;
+
+  //get info about the extension unit
+  rc = _fc_getNextComponentExtension(NULL, &maxExtLen, &maxComp, NULL);
+  fail_unless(rc==FC_SUCCESS, "Failure while getting info from component extension function");
+  fail_unless(maxExtLen<16, "Extension length may be too big?");
+
+  //Get something twice as big just to be safe
+  searchName = (char *) malloc(2*maxExtLen);
+  fail_unless(searchName, "malloc problem");
+  for(extState=0, lastCompInSearch=0; !lastCompInSearch; ){
+    //Set to a value so we can verify \0 at end
+    memset(searchName,'a', maxExtLen);
+    rc = _fc_getNextComponentExtension(&extState, &lastCompInGuess, &lastCompInSearch, searchName);
+    fail_unless(rc==FC_SUCCESS, "Problem cycling through extensions");
+    fail_unless(strlen(searchName)<maxExtLen, "Extension length was longer than max length");
+    fail_unless(searchName[0]!='\0', "Extension was empty");
+  }
+  free(searchName);
+  searchName = (char *)malloc(1+maxExtLen);  
+
+
+  //Test the extension guesser. This code is 
+  for(i=0; search_list[i][0]; i++){
+    searchName[0] = search_list[i][0][0]; //First letter is var name
+    //printf("Searching on %d :%s\n", i, search_list[i][0]);
+    for(found=0, j=0, extState=0, lastCompInGuess=0, lastCompInSearch=0; !lastCompInSearch; ){
+      rc = _fc_getNextComponentExtension(&extState, &lastCompInGuess, &lastCompInSearch, &searchName[1]);
+      fail_unless(rc==FC_SUCCESS, "Couldn't get proper extension");
+      //printf("Comparing %s to %s lastguess=%d lastsearch=%d\n", search_list[i][j], searchName, lastCompInGuess, lastCompInSearch);
+
+      if(!strcmp(search_list[i][j], searchName)){
+	j++;
+	if( (j>=4) || (!search_list[i][j])){
+	  //Out of user options
+	  if(lastCompInGuess){
+	    //We hit the right spot
+	    found=1;
+	    lastCompInSearch=1;
+	  } else {
+	    j=0;
+	    while(!lastCompInGuess){
+	      rc = _fc_getNextComponentExtension(&extState, &lastCompInGuess, &lastCompInSearch, NULL);
+	      fail_unless(rc==FC_SUCCESS, "Couldn't get proper extension");
+	    }
+	  }
+	} else {
+	  if(lastCompInGuess){
+	    //Guess was shorter than expected, start over
+	    j=0;
+	  }
+	}
+      } else {
+	//Didn't match
+	j=0;
+	while(!lastCompInGuess){
+	  rc = _fc_getNextComponentExtension(&extState, &lastCompInGuess, &lastCompInSearch, NULL);
+	  fail_unless(rc==FC_SUCCESS, "Couldn't get proper extension");
+	}
+      }
+    }
+
+    if(i<=last_good_search) fail_unless( found, "Expecting an extension match but didn't get one");
+    else                    fail_unless(!found, "Not expecting an extension match but found one");
+  }
+
+  //Boundary checking on state variable
+  extState = (0xFF<<0);
+  rc = _fc_getNextComponentExtension(&extState, &lastCompInGuess, &lastCompInSearch, &searchName[1]);
+  fail_unless(rc==FC_INPUT_ERROR, "Should have I/O out of bounds");
+  extState = (0xFF<<8);
+  rc = _fc_getNextComponentExtension(&extState, &lastCompInGuess, &lastCompInSearch, &searchName[1]);
+  fail_unless(rc==FC_INPUT_ERROR, "Should have I/O out of bounds");
+  extState = (0xFF<<16);
+  rc = _fc_getNextComponentExtension(&extState, &lastCompInGuess, &lastCompInSearch, &searchName[1]);
+  fail_unless(rc==FC_INPUT_ERROR, "Should have I/O out of bounds");
+
+  free(searchName);
+
+  extState=0;
+  rc = _fc_getNextComponentExtension(&extState, &lastCompInGuess, &lastCompInSearch, NULL);
+  fail_unless(rc==FC_SUCCESS, "Failure while getting info from component extension function");
+  fail_unless((extState>0)&&(!lastCompInGuess)&&(!lastCompInSearch), "Bad updates when stepping through data");
+  
+
+
+
+
+
+  //Load in a dataset w/ multicomponent variable into mesh[0]
+  rc = fc_loadDataset(var_dset_name, &dataset[0]);
   fail_unless(rc == FC_SUCCESS, "abort: failed to load dataset");
-  rc = fc_getMeshByName(dataset[0], "small_tri", &numReturnMeshes,&returnMeshes);
+  rc = fc_getMeshByName(dataset[0], var_mesh_name, &numReturnMeshes,&returnMeshes);
   fail_unless(rc == FC_SUCCESS, "aborted - cant get mesh by name");
   fail_unless(numReturnMeshes == 1, "failed to find unique mesh by name");
   mesh[0] = returnMeshes[0];
   free(returnMeshes);
-  rc = fc_loadDataset("../data/gen_gaussians.ex2", &dataset[1]);
+
+  //Load in a dataset w/ multicomponent seqVariable into mesh[1]
+  rc = fc_loadDataset(svar_dset_name, &dataset[1]);
   fail_unless(rc == FC_SUCCESS, "abort: failed to load dataset");
-  rc = fc_getMeshByName(dataset[1], "grid", &numReturnMeshes,&returnMeshes);
+  rc = fc_getMeshByName(dataset[1], svar_mesh_name, &numReturnMeshes,&returnMeshes);
   fail_unless(rc == FC_SUCCESS, "aborted - cant get mesh by name");
   fail_unless(numReturnMeshes == 1, "failed to find unique mesh by name");
   mesh[1] = returnMeshes[0];
   free(returnMeshes);
 
-  for (i = 0; i < numNames; i++){
-    rc = fc_getVariableComponentsByName(mesh[0], names[i], &type, &numVars,
+  for (i = 0; i < var_numNames; i++){
+    //printf("Testing %s\n", var_names[i]);
+    rc = fc_getVariableComponentsByName(mesh[0], var_names[i], &type, &numVars,
 					&vars);
     fail_unless(rc == FC_SUCCESS, "failed to get var components");
-    fail_unless(numVars == numRetVals[i], "wrong number of return vars");
+    fail_unless(numVars == var_numRetVals[i], "wrong number of return vars");
     if (numVars > 0){
       fail_unless(type == FC_MT_VECTOR, "wrong math type");
     } else {
       fail_unless(type == FC_MT_UNKNOWN, "wrong math type");
     }
 
-    if (numRetVals[i] > 0){
+    if (var_numRetVals[i] > 0){
       fail_unless( vars != NULL, "should be return vars");
-      char* compname = (char*)malloc((strlen(names[i])+3)*sizeof(char));
+      char* compname = (char*)malloc(strlen(var_names[i])+maxExtLen+1);
       for (j = 0; j < numVars; j++){
 	char* retname;
-	sprintf(compname, "%s_%s", names[i], vector_endings[j]);
+	sprintf(compname, "%s%s", var_names[i], var_vector_endings[i][j]);
 	rc = fc_getVariableName(vars[j], &retname);
 	fail_unless(strcmp(compname, retname)== 0 , "wrong var name");
 	free(retname);
@@ -5450,12 +5606,12 @@ START_TEST(comps_by_name)
       free(vars);
 
       // we can assume the vals for this works since its just a wrapper function
-      rc = fc_getOrGenerateUniqueVariableByName(mesh[0], names[i], &genvar);
+      rc = fc_getOrGenerateUniqueVariableByName(mesh[0], var_names[i], &genvar);
       fail_unless(rc == FC_SUCCESS, "failed to get var");
       fail_unless(!FC_HANDLE_EQUIV(genvar,FC_NULL_VARIABLE), "wrong return val");
       //make sure the prev vals are wiped out
       for (j = 0; j < numVars; j++){
-	sprintf(compname, "%s_%s", names[i], vector_endings[j]);
+	sprintf(compname, "%s%s", var_names[i], var_vector_endings[i][j]);
 	rc = fc_getVariableByName(mesh[0], compname, &numVars, &vars);
 	fail_unless(numVars == 0, "should have wiped out vars");
       }
@@ -5464,11 +5620,11 @@ START_TEST(comps_by_name)
   }
 
 
-  for (i = 0; i < numNames; i++){
-    rc = fc_getSeqVariableComponentsByName(mesh[1], names[i], &type,
+  for (i = 0; i < svar_numNames; i++){
+    rc = fc_getSeqVariableComponentsByName(mesh[1], svar_names[i], &type,
 					   &numVars, &numSteps, &seqvars);
     fail_unless(rc == FC_SUCCESS, "failed to get var components");
-    fail_unless(numVars == numSeqRetVals[i], "wrong number of return vars");
+    fail_unless(numVars == svar_numRetVals[i], "wrong number of return vars");
     if (numVars > 0){
       fail_unless(type == FC_MT_VECTOR, "wrong math type");
     } else {
@@ -5477,10 +5633,10 @@ START_TEST(comps_by_name)
 
     if (numVars > 0){
       fail_unless( seqvars != NULL, "should be return vars");
-      char* compname = (char*)malloc((strlen(names[i])+3)*sizeof(char));
+      char* compname = (char*)malloc((strlen(svar_names[i])+3)*sizeof(char));
       for (j = 0; j < numVars; j++){
 	char* retname;
-	sprintf(compname, "%s_%s", names[i], vector_endings[j]);
+	sprintf(compname, "%s%s", svar_names[i], svar_vector_endings[i][j]);
 	rc = fc_getVariableName(seqvars[j][0], &retname);
 	fail_unless(strcmp(compname,retname) == 0, "wrong var name");
 	if (seqvars[j]) free(seqvars[j]);
@@ -5489,13 +5645,13 @@ START_TEST(comps_by_name)
       free(seqvars);   
       free(numSteps);
 
-      rc = fc_getOrGenerateUniqueSeqVariableByName(mesh[1], names[i],
+      rc = fc_getOrGenerateUniqueSeqVariableByName(mesh[1], svar_names[i],
 						   &numgenSteps, &genseqvar);
       fail_unless(rc == FC_SUCCESS, "failed to get var");
       fail_unless( genseqvar != NULL, "wrong return val");
       //make sure the prev vals are wiped out
       for (j = 0; j < numVars; j++){
-	sprintf(compname, "%s_%s", names[i], vector_endings[j]);
+	sprintf(compname, "%s%s", svar_names[i], svar_vector_endings[i][j]);
 	rc = fc_getSeqVariableByName(mesh[1], compname, &numVars, 
 				     &numSteps, &seqvars);
 	fail_unless(numVars == 0, "should have wiped out vars");
@@ -5521,10 +5677,10 @@ START_TEST(comps_by_name)
   fail_unless(rc == FC_SUCCESS, "should work for bad name");
   fail_unless(genseqvar == NULL, "should return null var");
   fail_unless(numgenSteps == -1, "should return -1 steps");
-  rc = fc_getOrGenerateUniqueSeqVariableByName(mesh[1], "temperature", &numgenSteps,
+  rc = fc_getOrGenerateUniqueSeqVariableByName(mesh[1], "displacement per vertex", &numgenSteps,
 					       &genseqvar);
   fail_unless(rc == FC_SUCCESS, "should work for non components");
-  rc = fc_getSeqVariableByName(mesh[1],"temperature", &numVars, &numSteps,
+  rc = fc_getSeqVariableByName(mesh[1],"displacement per vertex", &numVars, &numSteps,
 				    &seqvars);
   fail_unless(numVars == 1, "wrong number return vars");
   fail_unless(FC_HANDLE_EQUIV(seqvars[0][0], genseqvar[0]), "wrong return var");
@@ -5537,63 +5693,63 @@ START_TEST(comps_by_name)
 
 
   //bad args
-  rc = fc_getVariableComponentsByName(FC_NULL_MESH, names[0], &type, &numVars, &vars);
+  rc = fc_getVariableComponentsByName(FC_NULL_MESH, var_names[0], &type, &numVars, &vars);
   fail_unless(rc != FC_SUCCESS, "should fail for null mesh");
-  rc = fc_getVariableComponentsByName(badMesh, names[0], &type, &numVars, &vars);
+  rc = fc_getVariableComponentsByName(badMesh, var_names[0], &type, &numVars, &vars);
   fail_unless(rc != FC_SUCCESS, "should fail for bad mesh");
   rc = fc_getVariableComponentsByName(mesh[0], NULL, &type, &numVars, &vars);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL name");
-  rc = fc_getVariableComponentsByName(mesh[0], names[0], NULL, &numVars, &vars);
+  rc = fc_getVariableComponentsByName(mesh[0], var_names[0], NULL, &numVars, &vars);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL args");
-  rc = fc_getVariableComponentsByName(mesh[0], names[0], &type, NULL, &vars);
+  rc = fc_getVariableComponentsByName(mesh[0], var_names[0], &type, NULL, &vars);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL args");
-  rc = fc_getVariableComponentsByName(mesh[0], names[0], &type, &numVars, NULL);
+  rc = fc_getVariableComponentsByName(mesh[0], var_names[0], &type, &numVars, NULL);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL args");
 
-  rc = fc_getSeqVariableComponentsByName(FC_NULL_MESH, names[0], &type, &numVars,
+  rc = fc_getSeqVariableComponentsByName(FC_NULL_MESH, svar_names[0], &type, &numVars,
 					 &numSteps, &seqvars);
   fail_unless(rc != FC_SUCCESS, "should fail for null mesh");
-  rc = fc_getSeqVariableComponentsByName(badMesh, names[0], &type, &numVars,
+  rc = fc_getSeqVariableComponentsByName(badMesh, svar_names[0], &type, &numVars,
 					 &numSteps, &seqvars);
   fail_unless(rc != FC_SUCCESS, "should fail for bad mesh");
   rc = fc_getSeqVariableComponentsByName(mesh[0], NULL, &type, &numVars, 
 					 &numSteps, &seqvars);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL name");
-  rc = fc_getSeqVariableComponentsByName(mesh[0], names[0], NULL, &numVars,
+  rc = fc_getSeqVariableComponentsByName(mesh[0], svar_names[0], NULL, &numVars,
 					 &numSteps, &seqvars);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL args");
-  rc = fc_getSeqVariableComponentsByName(mesh[0], names[0], &type, NULL, 
+  rc = fc_getSeqVariableComponentsByName(mesh[0], svar_names[0], &type, NULL, 
 					 &numSteps, &seqvars);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL args");
-  rc = fc_getSeqVariableComponentsByName(mesh[0], names[0], &type, &numVars,
+  rc = fc_getSeqVariableComponentsByName(mesh[0], svar_names[0], &type, &numVars,
 					 NULL, &seqvars);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL args");
-  rc = fc_getSeqVariableComponentsByName(mesh[0], names[0], &type, &numVars,
+  rc = fc_getSeqVariableComponentsByName(mesh[0], svar_names[0], &type, &numVars,
 					 &numSteps, NULL);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL args");
 
-  rc = fc_getOrGenerateUniqueVariableByName(FC_NULL_MESH, names[0], &genvar);
+  rc = fc_getOrGenerateUniqueVariableByName(FC_NULL_MESH, var_names[0], &genvar);
   fail_unless(rc != FC_SUCCESS, "should fail for null mesh");
-  rc = fc_getOrGenerateUniqueVariableByName(badMesh, names[0], &genvar);
+  rc = fc_getOrGenerateUniqueVariableByName(badMesh, var_names[0], &genvar);
   fail_unless(rc != FC_SUCCESS, "should fail for bad mesh");
   rc = fc_getOrGenerateUniqueVariableByName(mesh[0], NULL, &genvar);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL args");
-  rc = fc_getOrGenerateUniqueVariableByName(mesh[0], names[0], NULL);
+  rc = fc_getOrGenerateUniqueVariableByName(mesh[0], var_names[0], NULL);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL args");
 
-  rc = fc_getOrGenerateUniqueSeqVariableByName(FC_NULL_MESH, names[0],
+  rc = fc_getOrGenerateUniqueSeqVariableByName(FC_NULL_MESH, svar_names[0],
 					       &numgenSteps, &genseqvar);
   fail_unless(rc != FC_SUCCESS, "should fail for null mesh");
-  rc = fc_getOrGenerateUniqueSeqVariableByName(badMesh, names[0],
+  rc = fc_getOrGenerateUniqueSeqVariableByName(badMesh, svar_names[0],
 					       &numgenSteps, &genseqvar);
   fail_unless(rc != FC_SUCCESS, "should fail for bad mesh");
   rc = fc_getOrGenerateUniqueSeqVariableByName(mesh[0], NULL,
 					       &numgenSteps, &genseqvar);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL args");
-  rc = fc_getOrGenerateUniqueSeqVariableByName(mesh[0], names[0],
+  rc = fc_getOrGenerateUniqueSeqVariableByName(mesh[0], svar_names[0],
 					       NULL, &genseqvar);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL args");
-  rc = fc_getOrGenerateUniqueSeqVariableByName(mesh[0], names[0],
+  rc = fc_getOrGenerateUniqueSeqVariableByName(mesh[0], svar_names[0],
 					       &numgenSteps, NULL);
   fail_unless(rc != FC_SUCCESS, "should fail for NULL args");
 }
@@ -6923,7 +7079,1133 @@ START_TEST(seqvars_copy_with_association)
 END_TEST
 
 
+//assumes fc_createSubsetMesh works properly (to get the mapping vars)
+//FIXME:this does not check that only works for VERTEX and ELEMENT and not
+//FACE, EDGE or globals since those should be supported
+START_TEST(region)
+{
+  FC_ReturnCode rc;
+  FC_Dataset dataset;
+  FC_Mesh origmesh, regionmesh, regionmesh2;
+  FC_Variable destvar, *destseqvar, combineddestvar;
+  FC_Variable origelemvar, origvertvar, regionelemvar, regionvertvar;
+  FC_Variable vertmap, elemmap, vertmap2, elemmap2, badvertmap;
+  FC_Variable *returnVars,**returnSeqVars;
+  FC_Variable emptyvar, badvar;
+  FC_Variable badVariable = { 999, 999 };
+  FC_Subset sub, sub2;
+  FC_AssociationType assoc;
+  FC_MathType mathtype;
+  FC_DataType datatype;
+  FC_Sequence seq;
+  FC_Sequence badSequence = { 999, 999 };
+  int numDataPoint, numComponent;
+  int numElem, numVert, numRegionElem, numRegionVert;
+  int numReturnVars, numSeqVar, *numStepPerSeq;
+  int knownElemMatch[3] = {3,4,5};
+  int knownVertMatch[16] = {4,5,6,7,8,9,10,11,20,21,22,23,24,25,26,27};
+  int sub2elems[1] = {1}; //these cannot be in the known elem match
+  int seqcoords[3] = {1,2,3};
 
+
+  FC_Coords lowers = { 0., 0., 0. };
+  FC_Coords uppers = { 1., 1., 1. };
+  int *data, *fillval;
+  double *doubledata;
+  int i, j, k, found;
+
+  // setup - create test dataset and hex mesh
+  rc = fc_createDataset("temp.xxx", &dataset);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create dataset");
+
+  rc = fc_createSimpleHexMesh(dataset, "hex mesh", 3, 3, 3, lowers, uppers,
+			      &origmesh);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create simple hex mesh");
+  rc = fc_getMeshInfo(origmesh, NULL, NULL, &numVert, &numElem, NULL);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get mesh info");
+
+  //give it some var
+  //elem var is multi component
+  rc = fc_createVariable(origmesh, "elem var", &origelemvar);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create var");
+  data = (int*)malloc(3*numElem*sizeof(int));
+  for (i = 0; i < 3*numElem; i++){
+    data[i] = i; 
+  }
+  rc = fc_setVariableData(origelemvar, numElem, 3, FC_AT_ELEMENT,
+			  FC_MT_VECTOR, FC_DT_INT, (void*) data);
+  fail_unless(rc == FC_SUCCESS, "failed to set var data");
+  free(data);
+  //vertvar is single component
+  rc = fc_createVariable(origmesh, "vert var", &origvertvar);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create var");
+  data = (int*)malloc(numVert*sizeof(int));
+  for (i = 0; i < numVert; i++){
+    data[i] = i; 
+  }
+  rc = fc_setVariableData(origvertvar, numVert, 1, FC_AT_VERTEX,
+			  FC_MT_SCALAR, FC_DT_INT, (void*) data);
+  fail_unless(rc == FC_SUCCESS, "failed to set var data");
+  free(data);
+
+  rc = fc_createSequence(dataset, "seq", &seq);
+  fail_unless(rc == FC_SUCCESS, "failed to create seq");
+  rc = fc_setSequenceCoords(seq, 3, FC_DT_INT, (void*)(seqcoords));
+  fail_unless(rc == FC_SUCCESS, "failed to set seq coords");
+
+  
+  //------ first try with elem subset - first 3 elems ---------
+  rc = fc_createSubset(origmesh, "test subset", FC_AT_ELEMENT, &sub);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset");
+  rc = fc_addArrayMembersToSubset(sub,3,knownElemMatch);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to add member to subset");
+
+  rc = fc_createSubsetMesh(sub, dataset, 1, 0,0,0,0, "regionmesh", &regionmesh,
+			   &vertmap, &elemmap);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset mesh");
+  
+  //check known vals
+  rc = fc_getMeshInfo(regionmesh, NULL, NULL, &numRegionVert, &numRegionElem, NULL);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get mesh info");
+  fail_unless( numRegionElem == 3, "abort: wrong num elem in region mesh");
+  fail_unless( numRegionVert == 16, "abort: wrong num vert in region mesh");
+
+  //check the vars arent already there
+  rc = fc_getVariableByName(regionmesh, "copied elem var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 0, "abort: worng num return vars");
+  if (returnVars) free(returnVars);
+  rc = fc_getVariableByName(regionmesh, "vert var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 0, "abort: worng num return vars");
+  if (returnVars) free(returnVars);
+
+  //copy elem var to elem region mesh (with new name)
+  rc = fc_copyVariableToRegionMesh(origelemvar, regionmesh, elemmap, NULL,
+				   "copied elem var", &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cannot copy var to region mesh");
+  //check name as well
+  rc = fc_getVariableByName(regionmesh, "copied elem var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 1, "abort: worng num return vars");
+  rc = fc_getVariableInfo(returnVars[0], &numDataPoint, &numComponent, &assoc,
+			  &mathtype, &datatype);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+  fail_unless(numDataPoint == numRegionElem, "abort: wrong numDataPoint");
+  fail_unless(numComponent == 3, "abort: wrong numComponent");
+  fail_unless(assoc == FC_AT_ELEMENT, "abort: wrong assoc");
+  fail_unless(mathtype == FC_MT_VECTOR, "abort: wrong mathtype");
+  fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+  fail_unless(FC_HANDLE_EQUIV(destvar,returnVars[0]), "abort: wrong hanlde on return var");
+
+  rc = fc_getVariableDataPtr(returnVars[0], (void**) &data);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+  //check known values
+  for (i = 0; i < numDataPoint; i++){
+    fail_unless( data[i*numComponent] == knownElemMatch[i]*numComponent,
+		 "abort: wrong data val");
+    fail_unless( data[i*numComponent+1] == knownElemMatch[i]*numComponent+1,
+		 "abort: wrong data val");
+    fail_unless( data[i*numComponent+2] == knownElemMatch[i]*numComponent+2,
+		 "abort: wrong data val");
+  }
+
+  //now copy it back
+  rc = fc_copyVariableFromRegionMesh(returnVars[0], origmesh, elemmap, NULL,
+				     NULL, &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy var from region mesh");
+  //also set up for seq var test
+  rc = fc_copySeqVariableStepFromRegionMesh(returnVars[0], origmesh,
+  					    seq, 2, elemmap, NULL, 
+					    "copied elem seqvar",
+					    &destseqvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy seq var step from region mesh");
+  free(returnVars);
+  //normal var test
+  rc = fc_getVariableByName(origmesh, "copied elem var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 1, "abort: worng num return vars");
+  rc = fc_getVariableInfo(returnVars[0], &numDataPoint, &numComponent, &assoc,
+			  &mathtype, &datatype);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+  fail_unless(numDataPoint == numElem, "abort: wrong numDataPoint");
+  fail_unless(numComponent == 3, "abort: wrong numComponent");
+  fail_unless(assoc == FC_AT_ELEMENT, "abort: wrong assoc");
+  fail_unless(mathtype == FC_MT_VECTOR, "abort: wrong mathtype");
+  fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+  fail_unless(FC_HANDLE_EQUIV(destvar,returnVars[0]), "abort: wrong handle on return var");
+
+  rc = fc_getVariableDataPtr(returnVars[0], (void**) &data);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+  //check known values
+  for (i = 0; i < numDataPoint; i++){
+    found = 0;
+    for (j = 0 ; j < 3; j++){
+      if ( i == knownElemMatch[j]){
+	found = 1;
+	break;
+      }
+    }
+    if (found){
+      fail_unless(data[i*numComponent] == i*numComponent,"abort: wrong data val");
+      fail_unless(data[i*numComponent+1] == i*numComponent+1,"abort: wrong data val");
+      fail_unless(data[i*numComponent+2] == i*numComponent+2,"abort: wrong data val");
+    } else {
+      fail_unless(data[i*numComponent] == 0,"abort: wrong data val");
+      fail_unless(data[i*numComponent+1] == 0,"abort: wrong data val");
+      fail_unless(data[i*numComponent+2] == 0,"abort: wrong data val");
+    }
+  }
+  free(returnVars);
+  fc_deleteVariable(destvar);
+
+  //seq var test
+  //  fc_printSeqVariable(3,destseqvar,"created",1);
+  rc = fc_getSeqVariableByName(origmesh, "copied elem seqvar",
+			       &numSeqVar,&numStepPerSeq, &returnSeqVars);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get seq var");
+  fail_unless(numSeqVar == 1, "abort: wrong num seq var");
+  fail_unless(numStepPerSeq[0] == 3, "abort: wrong num seq var step");
+  for (i = 0; i < 3; i++){
+    rc = fc_getVariableInfo(returnSeqVars[0][i], &numDataPoint, &numComponent, &assoc,
+				&mathtype, &datatype);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+    fail_unless(numDataPoint == numElem, "abort: wrong numDataPoint");
+    fail_unless(numComponent == 3, "abort: wrong numComponent");
+    fail_unless(assoc == FC_AT_ELEMENT, "abort: wrong assoc");
+    fail_unless(mathtype == FC_MT_VECTOR, "abort: wrong mathtype");
+    fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+    fail_unless(FC_HANDLE_EQUIV(returnSeqVars[0][i],destseqvar[i]), "abort: var handle mismatch");
+    rc = fc_getVariableDataPtr(returnSeqVars[0][i], (void**)&data);
+    fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+    //check known values
+    for (j = 0; j < numDataPoint; j++){
+      found = 0;
+      if (i == 2){
+	for (k = 0 ; k < 3; k++){
+	  if ( j == knownElemMatch[k]){
+	    found = 1;
+	    break;
+	  }
+	}
+      }
+      if (found){
+	fail_unless(data[j*numComponent] == j*numComponent,"abort: wrong data val");
+	fail_unless(data[j*numComponent+1] == j*numComponent+1,"abort: wrong data val");
+	fail_unless(data[j*numComponent+2] == j*numComponent+2,"abort: wrong data val");
+      } else {
+	fail_unless(data[j*numComponent] == 0,"abort: wrong data val");
+	fail_unless(data[j*numComponent+1] == 0,"abort: wrong data val");
+	fail_unless(data[j*numComponent+2] == 0,"abort: wrong data val");
+      }
+    }
+  }
+
+
+  fc_deleteSeqVariable(numStepPerSeq[0],returnSeqVars[0]);
+  free(numStepPerSeq);
+  free(returnSeqVars[0]);
+  free(returnSeqVars);
+  free(destseqvar);
+ 
+
+  //copy vertex var to elem region mesh (with same name)
+  rc = fc_copyVariableToRegionMesh(origvertvar, regionmesh, vertmap, NULL,
+				   NULL, &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cannot copy var to region mesh");
+  //check name as well
+  rc = fc_getVariableByName(regionmesh, "vert var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 1, "abort: wrong num return vars");
+  rc = fc_getVariableInfo(returnVars[0], &numDataPoint, &numComponent, &assoc,
+			  &mathtype, &datatype);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+  fail_unless(numDataPoint == numRegionVert, "abort: wrong numDataPoint");
+  fail_unless(numComponent == 1, "abort: wrong numComponent");
+  fail_unless(assoc == FC_AT_VERTEX, "abort: wrong assoc");
+  fail_unless(mathtype == FC_MT_SCALAR, "abort: wrong mathtype");
+  fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+  fail_unless(FC_HANDLE_EQUIV(destvar,returnVars[0]), "abort: wrong hanlde on return var");
+  rc = fc_getVariableDataPtr(returnVars[0], (void**) &data);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+  //check known values
+  for (i = 0; i < numDataPoint; i++){
+    fail_unless( data[i] == knownVertMatch[i], "abort: wrong data val");
+  }
+
+  //now copy it back
+  rc = fc_copyVariableFromRegionMesh(returnVars[0], origmesh, vertmap, NULL,
+				     "copied vert var", &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy var from region mesh");
+  //also set up for seq var test
+  rc = fc_copySeqVariableStepFromRegionMesh(returnVars[0], origmesh,
+					    seq, 0, vertmap, NULL, 
+					    "copied vert seqvar",
+					    &destseqvar);
+  free(destseqvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy seq var step from region mesh");
+  rc = fc_copySeqVariableStepFromRegionMesh(returnVars[0], origmesh,
+					    seq, 2, vertmap, NULL, 
+					    "copied vert seqvar",
+					    &destseqvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy seq var step from region mesh");
+  free(returnVars);
+  //single var test
+  rc = fc_getVariableByName(origmesh, "copied vert var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 1, "abort: wrong num return vars");
+  rc = fc_getVariableInfo(returnVars[0], &numDataPoint, &numComponent, &assoc,
+			  &mathtype, &datatype);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+  fail_unless(numDataPoint == numVert, "abort: wrong numDataPoint");
+  fail_unless(numComponent == 1, "abort: wrong numComponent");
+  fail_unless(assoc == FC_AT_VERTEX, "abort: wrong assoc");
+  fail_unless(mathtype == FC_MT_SCALAR, "abort: wrong mathtype");
+  fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+  fail_unless(FC_HANDLE_EQUIV(destvar,returnVars[0]), "abort: wrong hanlde on return var");
+
+  rc = fc_getVariableDataPtr(returnVars[0], (void**) &data);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+  //check known values
+  for (i = 0; i < numDataPoint; i++){
+    found = 0;
+    for (j = 0 ; j < 16; j++){
+      if ( i == knownVertMatch[j]){ 
+	fail_unless(data[i] == i,"abort: wrong data val");
+	found = 1;
+	break;
+      }
+    }
+    if (!found){
+      fail_unless(data[i] == 0,"abort: wrong data val");
+    }
+  }
+  free(returnVars);
+  fc_deleteVariable(destvar);
+  fc_deleteSubset(sub);
+  //seq var test
+  rc = fc_getSeqVariableByName(origmesh, "copied vert seqvar",
+			       &numSeqVar,&numStepPerSeq, &returnSeqVars);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get seq var");
+  fail_unless(numSeqVar == 1, "abort: wrong num seq var");
+  fail_unless(numStepPerSeq[0] == 3, "abort: wrong num seq var step");
+  for (i = 0; i < 3; i++){ //steps
+    rc = fc_getVariableInfo(returnSeqVars[0][i], &numDataPoint, &numComponent, &assoc,
+				&mathtype, &datatype);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+    fail_unless(numDataPoint == numVert, "abort: wrong numDataPoint");
+    fail_unless(numComponent == 1, "abort: wrong numComponent");
+    fail_unless(assoc == FC_AT_VERTEX, "abort: wrong assoc");
+    fail_unless(mathtype == FC_MT_SCALAR, "abort: wrong mathtype");
+    fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+    fail_unless(FC_HANDLE_EQUIV(returnSeqVars[0][i],destseqvar[i]), "abort: var handle mismatch");
+    rc = fc_getVariableDataPtr(returnSeqVars[0][i], (void**)&data);
+    fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+    //check known values
+    for (j = 0; j < numDataPoint; j++){
+      found = 0;
+      if (i == 0 || i == 2){
+	for (k = 0 ; k < 16; k++){
+	  if ( j == knownVertMatch[k]){
+	    fail_unless(data[j] == j,"abort: wrong data val");
+	    found = 1;
+	    break;
+	  }
+	}
+      }
+      if (!found){
+	fail_unless(data[j] == 0,"abort: wrong data val");
+      }
+    }
+  }
+  rc = fc_deleteSeqVariable(numStepPerSeq[0],returnSeqVars[0]);
+  free(numStepPerSeq);
+  free(returnSeqVars[0]);
+  free(returnSeqVars);
+  free(destseqvar);
+  fc_deleteMesh(regionmesh);
+
+  //------ now try with vertex subset - use same subset ---------
+  rc = fc_createSubset(origmesh, "test subset", FC_AT_VERTEX, &sub);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset");
+  rc = fc_addArrayMembersToSubset(sub,16,knownVertMatch);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to add member to subset");
+
+  rc = fc_createSubsetMesh(sub, dataset, 1, 0,0,0,0, "regionmesh", &regionmesh,
+			   &vertmap, &elemmap);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset mesh");
+  
+  //check known vals
+  rc = fc_getMeshInfo(regionmesh, NULL, NULL, &numRegionVert, &numRegionElem, NULL);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get mesh info");
+  fail_unless( numRegionElem == 3, "abort: wrong num elem in region mesh");
+  fail_unless( numRegionVert == 16, "abort: wrong num vert in region mesh");
+
+  //check the vars arent already there
+  rc = fc_getVariableByName(regionmesh, "copied elem var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 0, "abort: worng num return vars");
+  if (returnVars) free(returnVars);
+  rc = fc_getVariableByName(regionmesh, "copied vert var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 0, "abort: worng num return vars");
+  if (returnVars) free(returnVars);
+  rc = fc_getVariableByName(origmesh, "copied elem var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 0, "abort: worng num return vars");
+  if (returnVars) free(returnVars);
+  rc = fc_getVariableByName(origmesh, "copied vert var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 0, "abort: worng num return vars");
+  if (returnVars) free(returnVars);
+  rc = fc_getSeqVariableByName(origmesh, "copied vert seqvar",
+			       &numSeqVar,&numStepPerSeq, &returnSeqVars);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get seq var");
+  fail_unless(numSeqVar == 0, "abort: wrong num seq var");
+  if (returnVars) free(returnVars);
+  rc = fc_getSeqVariableByName(origmesh, "copied elem seqvar",
+			       &numSeqVar,&numStepPerSeq, &returnSeqVars);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get seq var");
+  fail_unless(numSeqVar == 0, "abort: wrong num seq var");
+  if (returnVars) free(returnVars);
+
+  //copy vert var to vert region mesh
+  rc = fc_copyVariableToRegionMesh(origvertvar, regionmesh, vertmap, NULL,
+				   "copied vert var", &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cannot copy var to region mesh");
+  //check name as well
+  rc = fc_getVariableByName(regionmesh, "copied vert var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 1, "abort: worng num return vars");
+  rc = fc_getVariableInfo(returnVars[0], &numDataPoint, &numComponent, &assoc,
+			  &mathtype, &datatype);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+  fail_unless(numDataPoint == numRegionVert, "abort: wrong numDataPoint");
+  fail_unless(numComponent == 1, "abort: wrong numComponent");
+  fail_unless(assoc == FC_AT_VERTEX, "abort: wrong assoc");
+  fail_unless(mathtype == FC_MT_SCALAR, "abort: wrong mathtype");
+  fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+  fail_unless(FC_HANDLE_EQUIV(destvar,returnVars[0]), "abort: wrong hanlde on return var");
+
+  rc = fc_getVariableDataPtr(returnVars[0], (void**) &data);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+  //check known values
+  for (i = 0; i < numDataPoint; i++){
+    fail_unless( data[i] == knownVertMatch[i], "abort: wrong data val");
+  }
+
+  //now copy it back
+  rc = fc_copyVariableFromRegionMesh(returnVars[0], origmesh, vertmap, NULL,
+				     NULL, &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy var from region mesh");
+  //also set up for seq var test
+  rc = fc_copySeqVariableStepFromRegionMesh(returnVars[0], origmesh,
+  					    seq, 2, vertmap, NULL, 
+					    "copied vert seqvar",
+					    &destseqvar);
+  free(destseqvar); //but keep the var
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy seq var step from region mesh");
+  rc = fc_copySeqVariableStepFromRegionMesh(returnVars[0], origmesh,
+  					    seq, 0, vertmap, NULL, 
+					    "copied vert seqvar",
+					    &destseqvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy seq var step from region mesh");
+  free(returnVars);
+  rc = fc_getVariableByName(origmesh, "copied vert var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 1, "abort: worng num return vars");
+  rc = fc_getVariableInfo(returnVars[0], &numDataPoint, &numComponent, &assoc,
+			  &mathtype, &datatype);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+  fail_unless(numDataPoint == numVert, "abort: wrong numDataPoint");
+  fail_unless(numComponent == 1, "abort: wrong numComponent");
+  fail_unless(assoc == FC_AT_VERTEX, "abort: wrong assoc");
+  fail_unless(mathtype == FC_MT_SCALAR, "abort: wrong mathtype");
+  fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+  fail_unless(FC_HANDLE_EQUIV(destvar,returnVars[0]), "abort: wrong handle on return var");
+
+  rc = fc_getVariableDataPtr(returnVars[0], (void**) &data);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+  //check known values
+  for (i = 0; i < numDataPoint; i++){
+    found = 0;
+    for (j = 0 ; j < 16; j++){
+      if ( i == knownVertMatch[j]){
+	found = 1;
+	break;
+      }
+    }
+    if (found){
+      fail_unless(data[i] == i,"abort: wrong data val");
+    } else {
+      fail_unless(data[i] == 0,"abort: wrong data val");
+    }
+  }
+  free(returnVars);
+  fc_deleteVariable(destvar);
+
+  //seqvar test
+  rc = fc_getSeqVariableByName(origmesh, "copied vert seqvar",
+			       &numSeqVar,&numStepPerSeq, &returnSeqVars);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get seq var");
+  fail_unless(numSeqVar == 1, "abort: wrong num seq var");
+  fail_unless(numStepPerSeq[0] == 3, "abort: wrong num seq var step");
+  for (i = 0; i < 3; i++){ //steps
+    rc = fc_getVariableInfo(returnSeqVars[0][i], &numDataPoint, &numComponent, &assoc,
+				&mathtype, &datatype);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+    fail_unless(numDataPoint == numVert, "abort: wrong numDataPoint");
+    fail_unless(numComponent == 1, "abort: wrong numComponent");
+    fail_unless(assoc == FC_AT_VERTEX, "abort: wrong assoc");
+    fail_unless(mathtype == FC_MT_SCALAR, "abort: wrong mathtype");
+    fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+    fail_unless(FC_HANDLE_EQUIV(returnSeqVars[0][i],destseqvar[i]), "abort: var handle mismatch");
+    rc = fc_getVariableDataPtr(returnSeqVars[0][i], (void**)&data);
+    fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+    //check known values
+    for (j = 0; j < numDataPoint; j++){
+      found = 0;
+      if (i == 2 || i == 0){
+	for (k = 0 ; k < 16; k++){
+	  if ( j == knownVertMatch[k]){
+	    fail_unless(data[j] == j,"abort: wrong data val");
+	    found = 1;
+	    break;
+	  }
+	}
+      }
+      if (!found){
+	fail_unless(data[j] == 0,"abort: wrong data val");
+      }
+    }
+  }
+  fc_deleteSeqVariable(numStepPerSeq[0],returnSeqVars[0]);
+  free(numStepPerSeq);
+  free(returnSeqVars[0]);
+  free(returnSeqVars);
+  free(destseqvar);
+
+
+  //copy elem var to vert region mesh 
+  rc = fc_copyVariableToRegionMesh(origelemvar, regionmesh, elemmap, NULL,
+				   "copied elem var", &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cannot copy var to region mesh");
+  //check name as well
+  rc = fc_getVariableByName(regionmesh, "copied elem var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 1, "abort: worng num return vars");
+  rc = fc_getVariableInfo(returnVars[0], &numDataPoint, &numComponent, &assoc,
+			  &mathtype, &datatype);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+  fail_unless(numDataPoint == numRegionElem, "abort: wrong numDataPoint");
+  fail_unless(numComponent == 3, "abort: wrong numComponent");
+  fail_unless(assoc == FC_AT_ELEMENT, "abort: wrong assoc");
+  fail_unless(mathtype == FC_MT_VECTOR, "abort: wrong mathtype");
+  fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+  fail_unless(FC_HANDLE_EQUIV(destvar,returnVars[0]), "abort: wrong hanlde on return var");
+  rc = fc_getVariableDataPtr(returnVars[0], (void**) &data);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+  //check known values
+  for (i = 0; i < numDataPoint; i++){
+    fail_unless( data[i*numComponent] == knownElemMatch[i]*numComponent, "abort: wrong data val");
+    fail_unless( data[i*numComponent+1] == knownElemMatch[i]*numComponent+1, "abort: wrong data val");
+    fail_unless( data[i*numComponent+2] == knownElemMatch[i]*numComponent+2, "abort: wrong data val");
+  }
+
+  //now copy it back 
+  rc = fc_copyVariableFromRegionMesh(returnVars[0], origmesh, elemmap, NULL,
+				     NULL, &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy var from region mesh");
+  //also set up for seq var test
+  rc = fc_copySeqVariableStepFromRegionMesh(returnVars[0], origmesh,
+  					    seq, 2, elemmap, NULL, 
+					    "copied elem seqvar",
+					    &destseqvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy seq var step from region mesh");
+  free(destseqvar); //but keep the var
+  rc = fc_copySeqVariableStepFromRegionMesh(returnVars[0], origmesh,
+  					    seq, 0, elemmap, NULL, 
+					    "copied elem seqvar",
+					    &destseqvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy seq var step from region mesh");
+  free(returnVars);
+  rc = fc_getVariableByName(origmesh, "copied elem var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 1, "abort: worng num return vars");
+  rc = fc_getVariableInfo(returnVars[0], &numDataPoint, &numComponent, &assoc,
+			  &mathtype, &datatype);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+  fail_unless(numDataPoint == numElem, "abort: wrong numDataPoint");
+  fail_unless(numComponent == 3, "abort: wrong numComponent");
+  fail_unless(assoc == FC_AT_ELEMENT, "abort: wrong assoc");
+  fail_unless(mathtype == FC_MT_VECTOR, "abort: wrong mathtype");
+  fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+  fail_unless(FC_HANDLE_EQUIV(destvar,returnVars[0]), "abort: wrong handle on return var");
+
+  rc = fc_getVariableDataPtr(returnVars[0], (void**) &data);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+  //check known values
+  for (i = 0; i < numDataPoint; i++){
+    found = 0;
+    for (j = 0 ; j < 3; j++){
+      if ( i == knownElemMatch[j]){
+	fail_unless(data[i*numComponent] == i*numComponent,"abort: wrong data val");
+	fail_unless(data[i*numComponent+1] == i*numComponent+1,"abort: wrong data val");
+	fail_unless(data[i*numComponent+2] == i*numComponent+2,"abort: wrong data val");
+	found = 1;
+	break;
+      }
+    }
+    if (!found){
+      fail_unless(data[i*numComponent] == 0,"abort: wrong data val");
+      fail_unless(data[i*numComponent+1] == 0,"abort: wrong data val");
+      fail_unless(data[i*numComponent+2] == 0,"abort: wrong data val");
+    }
+  }
+  free(returnVars);  
+  fc_deleteVariable(destvar);
+  //seq var test
+  //  fc_printSeqVariable(3,destseqvar,"created",1);
+  rc = fc_getSeqVariableByName(origmesh, "copied elem seqvar",
+			       &numSeqVar,&numStepPerSeq, &returnSeqVars);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get seq var");
+  fail_unless(numSeqVar == 1, "abort: wrong num seq var");
+  fail_unless(numStepPerSeq[0] == 3, "abort: wrong num seq var step");
+  for (i = 0; i < 3; i++){
+    rc = fc_getVariableInfo(returnSeqVars[0][i], &numDataPoint, &numComponent, &assoc,
+				&mathtype, &datatype);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+    fail_unless(numDataPoint == numElem, "abort: wrong numDataPoint");
+    fail_unless(numComponent == 3, "abort: wrong numComponent");
+    fail_unless(assoc == FC_AT_ELEMENT, "abort: wrong assoc");
+    fail_unless(mathtype == FC_MT_VECTOR, "abort: wrong mathtype");
+    fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+    fail_unless(FC_HANDLE_EQUIV(returnSeqVars[0][i],destseqvar[i]), "abort: var handle mismatch");
+    rc = fc_getVariableDataPtr(returnSeqVars[0][i], (void**)&data);
+    fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+    //check known values
+    for (j = 0; j < numDataPoint; j++){
+      found = 0;
+      if (i == 2 || i == 0){
+	for (k = 0 ; k < 3; k++){
+	  if ( j == knownElemMatch[k]){
+	    found = 1;
+	    break;
+	  }
+	}
+      }
+      if (found){
+	fail_unless(data[j*numComponent] == j*numComponent,"abort: wrong data val");
+	fail_unless(data[j*numComponent+1] == j*numComponent+1,"abort: wrong data val");
+	fail_unless(data[j*numComponent+2] == j*numComponent+2,"abort: wrong data val");
+      } else {
+	fail_unless(data[j*numComponent] == 0,"abort: wrong data val");
+	fail_unless(data[j*numComponent+1] == 0,"abort: wrong data val");
+	fail_unless(data[j*numComponent+2] == 0,"abort: wrong data val");
+      }
+    }
+  }
+  fc_deleteSeqVariable(numStepPerSeq[0],returnSeqVars[0]);
+  free(numStepPerSeq);
+  free(returnSeqVars[0]);
+  free(returnSeqVars);
+  free(destseqvar);
+  fc_deleteMesh(regionmesh);  
+
+
+  //------------multi region mesh copy var testing -------
+  //(adding subsequent ones) which includes existant var copy testing
+
+  //elem mesh and just elem var
+  rc = fc_createSubset(origmesh, "test subset", FC_AT_ELEMENT, &sub);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset");
+  rc = fc_addArrayMembersToSubset(sub,3,knownElemMatch);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to add member to subset");
+  rc = fc_createSubsetMesh(sub, dataset, 1, 0,0,0,0, "regionmesh", &regionmesh,
+			   &vertmap, &elemmap);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset mesh");
+
+  rc = fc_createSubset(origmesh, "test subset2", FC_AT_ELEMENT, &sub2);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset");
+  rc = fc_addArrayMembersToSubset(sub2,1,sub2elems);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to add member to subset");
+  rc = fc_createSubsetMesh(sub2, dataset, 1, 0,0,0,0, "regionmesh2", 
+			   &regionmesh2,
+			   &vertmap2, &elemmap2);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset mesh");
+
+  //make and copy them both back
+  rc = fc_copyVariableToRegionMesh(origelemvar, regionmesh, elemmap, NULL,
+				   "copied elem var", &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cannot copy var to region mesh");
+  fillval = malloc(sizeof(int*));
+  *fillval = 100;
+  rc = fc_copyVariableFromRegionMesh(destvar, origmesh, elemmap, fillval,
+				     "combined elem var", &combineddestvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy var from region mesh");
+  rc = fc_copySeqVariableStepFromRegionMesh(destvar, origmesh,
+  					    seq, 0, elemmap, fillval, 
+					    "combined elem seqvar",
+					    &destseqvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy seq var step from region mesh");
+  free(destseqvar); //but keep the var
+
+  rc = fc_copyVariableToRegionMesh(origelemvar, regionmesh2, elemmap2, NULL,
+				   "copied elem var", &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cannot copy var to region mesh");
+  *fillval = 300; //fill shouldnt matter for second var
+  rc = fc_copyVariableFromRegionMesh(destvar, origmesh, elemmap2, fillval,
+				     "combined elem var", &combineddestvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy var from region mesh");
+  rc = fc_copySeqVariableStepFromRegionMesh(destvar, origmesh,
+  					    seq, 0, elemmap2, fillval, 
+					    "combined elem seqvar",
+					    &destseqvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy seq var step from region mesh");
+
+  rc = fc_getVariableByName(origmesh, "combined elem var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 1, "abort: worng num return vars");
+  rc = fc_getVariableInfo(returnVars[0], &numDataPoint, &numComponent, &assoc,
+			  &mathtype, &datatype);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+  fail_unless(numDataPoint == numElem, "abort: wrong numDataPoint");
+  fail_unless(numComponent == 3, "abort: wrong numComponent");
+  fail_unless(assoc == FC_AT_ELEMENT, "abort: wrong assoc");
+  fail_unless(mathtype == FC_MT_VECTOR, "abort: wrong mathtype");
+  fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+  fail_unless(FC_HANDLE_EQUIV(combineddestvar,returnVars[0]), "abort: wrong handle on return var");
+
+  rc = fc_getVariableDataPtr(returnVars[0], (void**) &data);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+  //check known values
+  for (i = 0; i < numDataPoint; i++){
+    found = 0;
+    for (j = 0 ; j < 3; j++){
+      if (i == knownElemMatch[j]){ 
+	fail_unless(data[i*numComponent] == i*numComponent,"abort: wrong data val");
+	fail_unless(data[i*numComponent+1] == i*numComponent+1,"abort: wrong data val");
+	fail_unless(data[i*numComponent+2] == i*numComponent+2,"abort: wrong data val");
+	found = 1;
+	break;
+      }
+    }
+    if (!found){
+      if (i == sub2elems[0]){ 
+	fail_unless(data[i*numComponent] == i*numComponent,"abort: wrong data val");
+	fail_unless(data[i*numComponent+1] == i*numComponent+1,"abort: wrong data val");
+	fail_unless(data[i*numComponent+2] == i*numComponent+2,"abort: wrong data val");
+	found = 1;
+      }
+    }
+
+    if (!found){
+      fail_unless(data[i*numComponent] == 100,"abort: wrong data val"); //orig fill val
+      fail_unless(data[i*numComponent+1] == 100,"abort: wrong data val"); //orig fill val
+      fail_unless(data[i*numComponent+2] == 100,"abort: wrong data val"); //orig fill val
+    }
+  }
+  free(fillval);
+  free(returnVars);  
+  fc_deleteVariable(destvar);
+  //seqvar test
+  rc = fc_getSeqVariableByName(origmesh, "combined elem seqvar",
+			       &numSeqVar,&numStepPerSeq, &returnSeqVars);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get seq var");
+  fail_unless(numSeqVar == 1, "abort: wrong num seq var");
+  fail_unless(numStepPerSeq[0] == 3, "abort: wrong num seq var step");
+  for (i = 0; i < 3; i++){
+    rc = fc_getVariableInfo(returnSeqVars[0][i], &numDataPoint, &numComponent, &assoc,
+				&mathtype, &datatype);
+    fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+    fail_unless(numDataPoint == numElem, "abort: wrong numDataPoint");
+    fail_unless(numComponent == 3, "abort: wrong numComponent");
+    fail_unless(assoc == FC_AT_ELEMENT, "abort: wrong assoc");
+    fail_unless(mathtype == FC_MT_VECTOR, "abort: wrong mathtype");
+    fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+    fail_unless(FC_HANDLE_EQUIV(returnSeqVars[0][i],destseqvar[i]), "abort: var handle mismatch");
+    rc = fc_getVariableDataPtr(returnSeqVars[0][i], (void**)&data);
+    fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+    //check known values
+    for (j = 0; j < numDataPoint; j++){
+      found = 0;
+      if (i == 0){
+	for (k = 0 ; k < 3; k++){
+	  if (j == knownElemMatch[k]){ 
+	    fail_unless(data[j*numComponent] == j*numComponent,"abort: wrong data val");
+	    fail_unless(data[j*numComponent+1] == j*numComponent+1,"abort: wrong data val");
+	    fail_unless(data[j*numComponent+2] == j*numComponent+2,"abort: wrong data val");
+	    found = 1;
+	    break;
+	  }
+	}
+	if (!found){
+	  if (j == sub2elems[0]){ 
+	    fail_unless(data[j*numComponent] == j*numComponent,"abort: wrong data val");
+	    fail_unless(data[j*numComponent+1] == j*numComponent+1,"abort: wrong data val");
+	    fail_unless(data[j*numComponent+2] == j*numComponent+2,"abort: wrong data val");
+	    found = 1;
+	  }
+	}
+      }
+      if (!found){
+	fail_unless(data[j*numComponent] == 100,"abort: wrong data val"); //orig fill val
+	fail_unless(data[j*numComponent+1] == 100,"abort: wrong data val"); //orig fill val
+	fail_unless(data[j*numComponent+2] == 100,"abort: wrong data val"); //orig fill val
+      }
+    }
+  }
+  fc_deleteSeqVariable(numStepPerSeq[0],returnSeqVars[0]);
+  free(numStepPerSeq);
+  free(returnSeqVars[0]);
+  free(returnSeqVars);
+  free(destseqvar);
+  fc_deleteMesh(regionmesh2); 
+  fc_deleteMesh(regionmesh);
+
+
+  //get a vert regionmesh which we will use for most subsequent cases
+  rc = fc_createSubset(origmesh, "test subset", FC_AT_VERTEX, &sub);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset");
+  rc = fc_addArrayMembersToSubset(sub,16,knownVertMatch);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to add member to subset");
+  rc = fc_createSubsetMesh(sub, dataset, 1, 0,0,0,0, "regionmesh", &regionmesh,
+			   &vertmap, &elemmap);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset mesh");
+  rc = fc_copyVariableToRegionMesh(origvertvar, regionmesh, vertmap, NULL,
+				   "copied vert var", &regionvertvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cannot copy var to region mesh");
+  rc = fc_copyVariableToRegionMesh(origelemvar, regionmesh, elemmap, NULL,
+				   "copied elem var", &regionelemvar);
+
+  // ---- bad cases -----
+  // 1) mapping var is empty (actually becomes the test for non-numeric)
+  rc = fc_createVariable(origmesh, "emptyvar", &emptyvar);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create var");
+  rc = fc_copyVariableToRegionMesh(origvertvar, regionmesh, emptyvar, NULL,
+				   "copied vert var", &destvar);
+  fail_unless(rc != FC_SUCCESS, "abort: should fail for empty mapping var (not valid var)");
+  rc = fc_copyVariableFromRegionMesh(regionvertvar, origmesh, emptyvar, NULL,
+				     NULL, &destvar);
+  fail_unless(rc != FC_SUCCESS, "abort: should fail for empty mapping var (not valid var)");
+  rc = fc_copySeqVariableStepFromRegionMesh(regionvertvar, origmesh, seq, 1, emptyvar,
+					    NULL, NULL, &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for bad mapping var");
+
+
+  //  2) cannot copy onto an existing var in a region mesh
+  rc = fc_copyVariableToRegionMesh(origvertvar, regionmesh, vertmap, NULL,
+				   "copied vert var", &destvar);
+  fail_unless(rc != FC_SUCCESS, "abort: cannot copy var to an existing var on a region mesh");
+
+
+  // 3) incompatible multiple copy var types - assoc, datatype, mathtype, component 
+  // 3a) assoc (both single multi copies and seqvar with multiple copies into diff steps)
+  rc = fc_createVariable(regionmesh, "badvar", &badvar);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create var");
+  data = (int*)malloc(numRegionElem*sizeof(double));
+  for (i = 0; i < numRegionElem; i++){
+    data[i] = i; 
+  }
+  rc = fc_setVariableData(badvar, numRegionElem, 1, FC_AT_ELEMENT,
+			  FC_MT_SCALAR, FC_DT_INT, (void*) data);
+  fail_unless(rc == FC_SUCCESS, "failed to set var data");
+  free(data);
+  rc = fc_copyVariableFromRegionMesh(regionvertvar, origmesh, vertmap, NULL, "junkvar", &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: can't copy var from region mesh");
+  rc = fc_copySeqVariableStepFromRegionMesh(regionvertvar, origmesh, seq, 1, vertmap,
+					    NULL, "junkseqvar", &destseqvar);
+  fail_unless(rc == FC_SUCCESS, "abort: can't copy var from region mesh");
+  free(destseqvar); //but keep the var
+  rc = fc_copyVariableFromRegionMesh(badvar, origmesh, elemmap, NULL, "junkvar", &destvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying incompatible var should fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(badvar, origmesh, seq, 2, elemmap,
+					    NULL, "junkseqvar", &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying incompatible var should fail");
+  fc_deleteVariable(badvar);
+  //keep the junk vars because we are doing multicopy test
+
+  // 3b) datatype
+  rc = fc_createVariable(regionmesh, "double vert var", &badvar);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create var");
+  doubledata = (double*)malloc(numRegionVert*sizeof(double));
+  for (i = 0; i < numRegionVert; i++){
+    doubledata[i] = i; 
+  }
+  rc = fc_setVariableData(badvar, numRegionVert, 1, FC_AT_VERTEX,
+			  FC_MT_SCALAR, FC_DT_DOUBLE, (void*) doubledata);
+  fail_unless(rc == FC_SUCCESS, "failed to set var data");
+  free(doubledata);
+  rc = fc_copyVariableFromRegionMesh(badvar, origmesh, vertmap, NULL, "junkvar", &destvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying incompatible var should fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(badvar, origmesh, seq, 2, vertmap,
+					    NULL, "junkseqvar", &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying incompatible var should fail");
+  fc_deleteVariable(badvar);
+
+  //3c) component - in this case need the first copied var to be the elem var so can
+  //have more than one component
+  rc = fc_copyVariableFromRegionMesh(regionelemvar, origmesh, elemmap, NULL, "evar", &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: can't copy var from region mesh");
+  rc = fc_copySeqVariableStepFromRegionMesh(regionelemvar, origmesh, seq, 1, elemmap,
+					    NULL, "eseqvar", &destseqvar);
+  fail_unless(rc == FC_SUCCESS, "abort: can't copy var from region mesh");
+  free(destseqvar); //but keep the var
+  rc = fc_copyVariableFromRegionMesh(badvar, origmesh, elemmap, NULL, "evar", &destvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying incompatible mathtype var should fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(badvar, origmesh, seq, 2, elemmap,
+					    NULL, "eseqvar", &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying incompatible mathtype var should fail");
+
+  rc = fc_createVariable(regionmesh, "badvar", &badvar);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create var");
+  data = (int*)malloc(2*numRegionElem*sizeof(double));
+  for (i = 0; i < numRegionElem; i++){
+    data[i] = i; 
+  }
+  //no requirement on the number of components and the type vector
+  rc = fc_setVariableData(badvar, numRegionElem, 2, FC_AT_ELEMENT,
+			  FC_MT_VECTOR, FC_DT_INT, (void*) data);
+  fail_unless(rc == FC_SUCCESS, "failed to set var data");
+  free(data);
+  rc = fc_copyVariableFromRegionMesh(badvar, origmesh, elemmap, NULL, "evar", &destvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying incompatible numcomp var should fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(badvar, origmesh, seq, 2, elemmap,
+					    NULL, "eseqvar", &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying incompatible numcomp var should fail");
+  fc_deleteVariable(badvar);
+  //keep the base vars for the next test
+
+  //3d) mathtype - in this case need the first copied var to be the elem var so can
+  //have more than one component
+  rc = fc_createVariable(regionmesh, "badvar", &badvar);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create var");
+  data = (int*)malloc(3*numRegionElem*sizeof(double));
+  for (i = 0; i < numRegionElem; i++){
+    data[i] = i; 
+  }
+  //no requirement on the number of components and the type tensor
+  rc = fc_setVariableData(badvar, numRegionElem, 3, FC_AT_ELEMENT,
+			  FC_MT_TENSOR, FC_DT_INT, (void*) data);
+  fail_unless(rc == FC_SUCCESS, "failed to set var data");
+  free(data);
+
+  rc = fc_copyVariableFromRegionMesh(badvar, origmesh, elemmap, NULL, "evar", &destvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying incompatible mathtype var should fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(badvar, origmesh, seq, 2, elemmap,
+					    NULL, "eseqvar", &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying incompatible mathtype var should fail");
+  //cleanup
+  fc_deleteVariable(badvar);
+  rc = fc_getVariableByName(origmesh, "evar", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 1, "abort: wrong num return vars");
+  fc_deleteVariable(returnVars[0]);
+  free(returnVars);
+  rc = fc_getSeqVariableByName(origmesh, "eseqvar",
+			       &numSeqVar,&numStepPerSeq, &returnSeqVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numSeqVar == 1, "abort: wrong num return vars");
+  fc_deleteSeqVariable(numStepPerSeq[0],returnSeqVars[0]);
+  free(numStepPerSeq);
+  free(returnSeqVars[0]);
+  free(returnSeqVars);
+
+  //bakc to considering the vertex junk var as the 1sted copied var
+  // 4) mapping var is of different type
+  rc = fc_copyVariableFromRegionMesh(regionvertvar, origmesh, elemmap, NULL, "junkvar", &destvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying var via bad map should fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(regionvertvar, origmesh, seq, 1, elemmap,
+					    NULL, NULL, &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for bad mapping var");
+  rc = fc_copyVariableToRegionMesh(origvertvar, regionmesh, elemmap, NULL, "junkvar", &destvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying var via bad map should fail");
+  //clean up the junk vars
+  rc = fc_getVariableByName(origmesh, "junkvar", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 1, "abort: wrong num return vars");
+  fc_deleteVariable(returnVars[0]);
+  free(returnVars);
+  rc = fc_getSeqVariableByName(origmesh, "junkseqvar",
+			       &numSeqVar,&numStepPerSeq, &returnSeqVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numSeqVar == 1, "abort: wrong num return vars");
+  fc_deleteSeqVariable(numStepPerSeq[0],returnSeqVars[0]);
+  free(numStepPerSeq);
+  free(returnSeqVars[0]);
+  free(returnSeqVars);
+
+
+  // 5) mapping var must be single component
+  rc = fc_copyVariableFromRegionMesh(regionelemvar, origmesh, regionelemvar, NULL, "evar", &destvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying var via bad map should fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(regionelemvar, origmesh, seq, 1, regionelemvar,
+					    NULL, NULL, &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for bad (numcomp) mapping var");
+  rc = fc_copyVariableToRegionMesh(origelemvar, regionmesh, regionelemvar, NULL, "evar", &destvar);
+  fail_unless(rc != FC_SUCCESS, "abort: copying var via bad (numcomp) map should fail");
+
+
+  // 6) FIXME: deliberately not testing assoc not (at element or at vertex) also not global should fail
+  //since those should be supported next
+
+  //  fc_deleteMesh(regionmesh);  keep vertex mesh for now
+
+  // ------ special cases -------
+
+  //1) mapping var doesnt have anything that maps - just trying vert not elem
+  //check fill here as well
+  fillval = malloc(sizeof(int*));
+  *fillval = 3;
+  rc = fc_copyVariable(vertmap,regionmesh,"bad vertmap", &badvertmap);
+  fail_unless(rc == FC_SUCCESS, "Can't copy variable");
+
+  //change vals so they dont correspond to anything in the original mesh
+  rc = fc_getVariableDataPtr(badvertmap, (void**) &data);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+  for (i = 0; i < numRegionVert; i++){
+    data[i]+=100;
+  }
+
+  //copy vert var to vert region mesh using wrong map
+  rc = fc_copyVariableToRegionMesh(origvertvar, regionmesh, badvertmap, fillval,
+				   "copied bad vert var", &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cannot copy var to region mesh");
+  rc = fc_getVariableInfo(destvar, &numDataPoint, &numComponent, &assoc,
+			  &mathtype, &datatype);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+  fail_unless(numDataPoint == numRegionVert, "abort: wrong numDataPoint");
+  fail_unless(numComponent == 1, "abort: wrong numComponent");
+  fail_unless(assoc == FC_AT_VERTEX, "abort: wrong assoc");
+  fail_unless(mathtype == FC_MT_SCALAR, "abort: wrong mathtype");
+  fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+  rc = fc_getVariableDataPtr(destvar, (void**) &data);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+  //check known values
+  for (i = 0; i < numDataPoint; i++){
+    fail_unless( data[i] == *fillval, "abort: wrong data val");
+  }
+  fc_deleteVariable(destvar);
+
+  //other way
+  *fillval = 4;
+  rc = fc_copyVariableFromRegionMesh(regionvertvar, origmesh, badvertmap, fillval,
+				     NULL, &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cant copy var from region mesh");
+  rc = fc_getVariableByName(origmesh, "copied vert var", &numReturnVars, &returnVars);
+  fail_unless(rc == FC_SUCCESS, "abort: can't get vars by name");
+  fail_unless(numReturnVars == 1, "abort: worng num return vars");
+  rc = fc_getVariableInfo(returnVars[0], &numDataPoint, &numComponent, &assoc,
+			  &mathtype, &datatype);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to get var info");
+  fail_unless(numDataPoint == numVert, "abort: wrong numDataPoint");
+  fail_unless(numComponent == 1, "abort: wrong numComponent");
+  fail_unless(assoc == FC_AT_VERTEX, "abort: wrong assoc");
+  fail_unless(mathtype == FC_MT_SCALAR, "abort: wrong mathtype");
+  fail_unless(datatype == FC_DT_INT, "abort: wrong datatype");
+  fail_unless(FC_HANDLE_EQUIV(destvar,returnVars[0]), "abort: wrong handle on return var");
+
+  rc = fc_getVariableDataPtr(returnVars[0], (void**) &data);
+  fail_unless(rc == FC_SUCCESS, "abort: cant get var data");
+  //check known values
+  for (i = 0; i < numDataPoint; i++){
+    fail_unless(data[i] == *fillval,"abort: wrong data val");
+  }
+  free(returnVars);
+  fc_deleteVariable(destvar);
+  free(fillval);
+
+
+  fc_deleteMesh(regionmesh);  
+
+
+  // ---bad args
+  //get a vert regionmesh
+  rc = fc_createSubset(origmesh, "test subset", FC_AT_VERTEX, &sub);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset");
+  rc = fc_addArrayMembersToSubset(sub,16,knownVertMatch);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to add member to subset");
+  rc = fc_createSubsetMesh(sub, dataset, 1, 0,0,0,0, "regionmesh", &regionmesh,
+			   &vertmap, &elemmap);
+  fail_unless(rc == FC_SUCCESS, "abort: failed to create subset mesh");
+
+  rc = fc_copyVariableToRegionMesh(badVariable, regionmesh, vertmap, NULL, NULL, &destvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for bad var");
+  fail_unless(FC_HANDLE_EQUIV(destvar, FC_NULL_VARIABLE), "should return null var when fail");
+  rc = fc_copyVariableToRegionMesh(FC_NULL_VARIABLE, regionmesh, vertmap, NULL, NULL, &destvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for null var");
+  fail_unless(FC_HANDLE_EQUIV(destvar, FC_NULL_VARIABLE), "should return null var when fail");
+  rc = fc_copyVariableToRegionMesh(origvertvar, FC_NULL_MESH, vertmap, NULL, NULL, &destvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for null mesh");
+  fail_unless(FC_HANDLE_EQUIV(destvar, FC_NULL_VARIABLE), "should return null var when fail");
+  rc = fc_copyVariableToRegionMesh(origvertvar, regionmesh, badVariable, NULL, NULL, &destvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for bad map var");
+  fail_unless(FC_HANDLE_EQUIV(destvar, FC_NULL_VARIABLE), "should return null var when fail");
+  rc = fc_copyVariableToRegionMesh(origvertvar, regionmesh, FC_NULL_VARIABLE, NULL, NULL, &destvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for null map var");
+  fail_unless(FC_HANDLE_EQUIV(destvar, FC_NULL_VARIABLE), "should return null var when fail");
+  rc = fc_copyVariableToRegionMesh(origvertvar, regionmesh, vertmap, NULL, NULL, NULL);
+  fail_unless(rc != FC_SUCCESS, "should fail for null ret var");
+
+  rc = fc_copyVariableToRegionMesh(origvertvar, regionmesh, vertmap, NULL,
+				   "copied vert var", &destvar);
+  fail_unless(rc == FC_SUCCESS, "abort: cannot copy var to region mesh");
+  rc = fc_copyVariableFromRegionMesh(badVariable, regionmesh, vertmap, NULL, NULL, &combineddestvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for bad var");
+  fail_unless(FC_HANDLE_EQUIV(combineddestvar, FC_NULL_VARIABLE), "should return null var when fail");
+  rc = fc_copyVariableFromRegionMesh(FC_NULL_VARIABLE, regionmesh, vertmap, NULL, NULL,  &combineddestvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for null var");
+  fail_unless(FC_HANDLE_EQUIV(combineddestvar, FC_NULL_VARIABLE), "should return null var when fail");
+  rc = fc_copyVariableFromRegionMesh(destvar, FC_NULL_MESH, vertmap, NULL, NULL,  &combineddestvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for null mesh");
+  fail_unless(FC_HANDLE_EQUIV(combineddestvar, FC_NULL_VARIABLE), "should return null var when fail");
+  rc = fc_copyVariableFromRegionMesh(destvar, regionmesh, badVariable, NULL, NULL,  &combineddestvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for bad map var");
+  fail_unless(FC_HANDLE_EQUIV(combineddestvar, FC_NULL_VARIABLE), "should return null var when fail");
+  rc = fc_copyVariableFromRegionMesh(destvar, regionmesh, FC_NULL_VARIABLE, NULL, NULL,  &combineddestvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for null map var");
+  fail_unless(FC_HANDLE_EQUIV(combineddestvar, FC_NULL_VARIABLE), "should return null var when fail");
+  rc = fc_copyVariableFromRegionMesh(destvar, regionmesh, vertmap, NULL, NULL, NULL);
+  fail_unless(rc != FC_SUCCESS, "should fail for null ret var");
+
+  rc = fc_copySeqVariableStepFromRegionMesh(badVariable, origmesh, seq, 1, vertmap, NULL, NULL, &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for bad var");
+  fail_unless(destseqvar == NULL, "should return NULL when fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(FC_NULL_VARIABLE, origmesh, seq, 1, vertmap, NULL, NULL, &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for null var");
+  fail_unless(destseqvar == NULL, "should return NULL when fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(destvar, FC_NULL_MESH, seq, 1, vertmap, NULL, NULL, &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for null mesh");
+  fail_unless(destseqvar == NULL, "should return NULL when fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(destvar, origmesh, FC_NULL_SEQUENCE, 1, vertmap, NULL, NULL, &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for null seq");
+  fail_unless(destseqvar == NULL, "should return NULL when fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(destvar, origmesh, badSequence, 1, vertmap, NULL, NULL, &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for bad seq");
+  fail_unless(destseqvar == NULL, "should return NULL when fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(destvar, origmesh, seq, -1, vertmap, NULL, NULL, &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for bad step num");
+  fail_unless(destseqvar == NULL, "should return NULL when fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(destvar, origmesh, seq, 5, vertmap, NULL, NULL, &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for bad step num");
+  fail_unless(destseqvar == NULL, "should return NULL when fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(destvar, origmesh, seq, 0, badVariable, NULL, NULL, &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for bad var");
+  fail_unless(destseqvar == NULL, "should return NULL when fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(destvar, origmesh, seq, 0, FC_NULL_VARIABLE, NULL, NULL, &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for NULL var");
+  fail_unless(destseqvar == NULL, "should return NULL when fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(destvar, origmesh, seq, 0, vertmap, NULL, NULL, &destseqvar);
+  fail_unless(rc != FC_SUCCESS, "should fail for NULL var");
+  fail_unless(destseqvar == NULL, "should return NULL when fail");
+  rc = fc_copySeqVariableStepFromRegionMesh(destvar, origmesh, seq, 0, vertmap, NULL, NULL, NULL);
+  fail_unless(rc != FC_SUCCESS, "should fail for NULL ret var");
+
+
+  fc_deleteDataset(dataset);
+
+}
+END_TEST
 
 
 // *********************************************
@@ -6940,6 +8222,7 @@ Suite *variable_suite(void)
   TCase *tc_glb_var = tcase_create(" - Global Var Interface ");
   TCase *tc_glb_seq_var = tcase_create(" - Global SeqVar Intf. ");
   TCase *tc_convert = tcase_create(" - Convert vars ");
+  TCase *tc_region = tcase_create(" - Region vars  ");
 
   // private variable
   suite_add_tcase(suite, tc_private_var);
@@ -6999,6 +8282,10 @@ Suite *variable_suite(void)
   tcase_add_test(tc_convert, vars_copy_with_association);
   tcase_add_test(tc_convert, seqvars_copy_with_association);
 
+  // test region vars
+  suite_add_tcase(suite, tc_region);
+  tcase_add_checked_fixture(tc_region, variable_setup, variable_teardown);
+  tcase_add_test(tc_region, region);
 
   return suite;
 }

@@ -115,6 +115,13 @@ FC_ReturnCode _fc_geomSmoothCore(int numMesh, FC_Mesh* meshes, int doDispl,
                        FC_Variable** smooth_vars);
 
 
+// Containment function
+FC_ReturnCode  _fc_doesElementContainPoint(
+   FC_Mesh mesh, int element_id, double point[3], int dim,       
+   int max_num_vert_per_face, int *num_vert_per_face,
+   int *face_conns, double *vert_coords, int *hit_type);
+
+
 #ifdef __cplusplus
 }
 #endif

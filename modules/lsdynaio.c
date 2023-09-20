@@ -1855,6 +1855,37 @@ FC_ReturnCode _fc_readLSDynaMeshElemConns(
 
   // done
   meshSlot->elemToVertConns = conns;
+
+
+  //Sanity Check: We discovered that some LSDYNA files store elements
+  //with geometries smaller than 8 nodes by encoding the padding the
+  //last n entities in an element's connectivity list. For example, a
+  //tetrahedron's connectivity would look like [ 0,1,2,3,3,3,3,3 ].
+  //
+  //While it's easy enough to truncate the list at this point, we've
+  //already passed back meta information that says this element is
+  //FC_ET_HEX. Plus.. maybe there is a legitimate reason why the
+  //connectivity list has duplicate entries (??). In any case, we
+  //should pass the info on to the user and let them decide what to do.
+  {
+    int unique=0;
+    for(i=0;i<numVertPerElem; i++){
+      for(j=i-1; (j>=0) && (conns[i] != conns[j]); j--);
+      if(j<0) unique++;
+    }
+    if(unique!=numVertPerElem){
+      fc_printfErrorMessage(
+	 "\n"
+	 "  WARNING: LS-DYNA file has a mesh with duplicate vertices in the connectivity\n"
+	 "           list. While this characteristic may be valid, it is likely that\n"
+	 "           the dataset is actually storing smaller elements (e.g., tetrahedron\n"
+         "           instead of hexahedron). If you believe this to be the case, use the\n"
+         "           'fc_fix_lsdyna' program to adjust the data and save it as an \n"
+	 "           Exodus file.\n");
+    }
+  }
+
+
   return FC_SUCCESS;
 }
 

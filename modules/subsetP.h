@@ -68,10 +68,13 @@ extern "C" {
  *    - 03/25/04 RM Created.
  *    - 05/11/04 WSK Modified to become like Dataset, Mesh, etc.
  *    - 08/10/06 WSD Changed to have only 1 type of storage = sorted int array.
+ *    - 03-03-08 ACG added seq for seqSubsets
  */
 typedef struct {
   _FC_SlotHeader header; /**< Header, which contains general purpose info. */
   FC_Mesh mesh;          /**< Handle to owning mesh */
+  FC_Sequence sequence; /**< Handle to the owning sequence (can be NULL) */
+  int stepID;           /**< ID of step in a sequence, -1 if sequence == NULL */ 
   //---File reference
   _FC_SubFileIOInfo fileInfo; /**< Holds info pertinent to file access. */
   //---About the subset: members

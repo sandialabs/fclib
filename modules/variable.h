@@ -78,6 +78,20 @@ FC_ReturnCode fc_copyGlobalSeqVariable(int numStep, FC_Variable* src_vars,
                        char* newSeqVarName, FC_Variable** new_vars);
 FC_ReturnCode fc_copyVariable(FC_Variable src_var, FC_Mesh dest_mesh, 
 		       char* newVarName, FC_Variable* new_var);
+FC_ReturnCode fc_copyVariableFromRegionMesh(FC_Variable src_var, FC_Mesh dest_mesh, 
+					    FC_Variable mapping, void* fillval,
+					    char* newVarName, FC_Variable* new_var);
+FC_ReturnCode fc_copySeqVariableStepFromRegionMesh( FC_Variable src_var,
+						    FC_Mesh dest_mesh,
+						    FC_Sequence dest_seq,
+						    int targetStep,
+						    FC_Variable mapping,
+						    void* fillval,
+						    char* newVarName,
+						    FC_Variable** dest_seqvar); 
+FC_ReturnCode fc_copyVariableToRegionMesh(FC_Variable src_var, FC_Mesh dest_mesh, 
+					    FC_Variable mapping, void* fillval,
+					    char* newVarName, FC_Variable* new_var);
 FC_ReturnCode fc_copySeqVariable(int numStep, FC_Variable* src_vars, 
                        FC_Mesh dest_mesh, FC_Sequence dest_seq, 
                        char* newSeqVarName, FC_Variable** new_vars);

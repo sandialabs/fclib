@@ -70,6 +70,7 @@ FC_ReturnCode _fc_addEntryToSortedBlobArray(FC_SortedBlobArray *sba, int idx,
 FC_ReturnCode _fc_deleteEntryFromSortedBlobArray(FC_SortedBlobArray *sba, 
                          int idx);
 
+int _fc_qsortCmpInt(const void *a, const void *b);
 
 #ifdef __cplusplus
 }

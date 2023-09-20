@@ -38,6 +38,7 @@
  * \file subset.c
  * \brief Implementation for the \ref Subset module.
  *
+ *
  * $Source: /usr/local/Repositories/fcdmf/fclib/modules/subset.c,v $ 
  * $Revision: 1.154 $ 
  * $Date: 2006/10/19 03:14:50 $
@@ -66,6 +67,7 @@
 // this module
 #include "subset.h"
 #include "subsetP.h"
+#include "sequence.h"
 
 /**
  * \addtogroup  Subset
@@ -73,8 +75,14 @@
  *
  * \description
  *
- *    (For an explanation of general data manipulations, see 
- *    \ref DataInterface.)
+ *   Sequence subsets are stored as an array of subsets. If a function 
+ *   does not have a seqSubset version, in many cases you can call the
+ *   subset version on the first varaible in the seqSubset array and 
+ *   get the results you expect, e.g., fc_getSubsetInfo(seqSubset[0],...).
+ *   In some cases you would need to loop over all subsets in the
+ *   seqSubset array, .e.g, fc_getSubsetMembersAsArray(seqSubset[i], ...).
+ *   (For an explanation of general data manipulations, see 
+ *   \ref DataInterface.)
  */
 
 /**
@@ -193,6 +201,131 @@ FC_ReturnCode fc_createSubset(
   return FC_SUCCESS;
 }
 
+
+/**
+ * \ingroup Subset
+ * \brief  Create a new sequence subset on a specified mesh.
+ *
+ * \description
+ *
+ *     Create a new (empty) sequence subset as an array of subsets.
+ *     A sequence must be provided in addition to the mesh that
+ *     will be the owner of the subset. The sequence and mesh
+ *     must be in the same dataset.
+ *
+ * \modifications  
+ *    - 03-03-08 ACG, created
+ */
+FC_ReturnCode fc_createSeqSubset(
+  FC_Mesh mesh,         /**< input - mesh handle */
+  FC_Sequence sequence, /**< input - sequence handle */
+  char *subsetName,     /**< input - sequence subset name */
+  FC_AssociationType assoc,  /**< input - association of subset entities */
+  int *numStep,         /**< output -  the number of steps */
+  FC_Subset **seqSubs     /**< output - seq subset handles */
+) {
+  FC_ReturnCode rc;
+  _FC_MeshSlot* meshSlot;
+  _FC_SeqSlot* seqSlot;
+  _FC_SubSlot* subSlot;
+  int *tempNumPer, **tempSlotIDs;
+  int num;
+  int i;
+
+  // default return
+  if (numStep)
+    *numStep = -1;
+  if (seqSubs) 
+    *seqSubs = NULL;
+   
+  // check input
+  meshSlot = _fc_getMeshSlot(mesh);
+  seqSlot = _fc_getSeqSlot(sequence);
+  if (meshSlot == NULL || seqSlot == NULL || subsetName == NULL ||
+      !assoc ||  !fc_isAssociationTypeValid(assoc) || assoc == FC_AT_UNKNOWN || 
+      assoc == FC_AT_WHOLE_DATASET || numStep == NULL || seqSubs == NULL) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+  if (!FC_HANDLE_EQUIV(meshSlot->ds, seqSlot->ds)) {
+    fc_printfErrorMessage("%s",fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  // log message
+  fc_printfLogMessage("Creating new seq subset '%s'", subsetName);
+
+  // do as much checking as possible before creating new slot
+  // ----- get number of mask elements depending on association
+  rc = fc_getMeshNumEntity(mesh,assoc,&num); 
+  if (rc != FC_SUCCESS) 
+    return FC_INPUT_ERROR;
+  if (num < 1) {
+    fc_printfErrorMessage("Entity type %s does not exists on mesh '%s'",
+                          fc_getAssociationTypeText(assoc),
+                          meshSlot->header.name); 
+    return FC_INPUT_ERROR;
+  }
+
+  //make room for array & setup return values;
+  *numStep = seqSlot->numStep;
+  *seqSubs = malloc(sizeof(FC_Subset)*seqSlot->numStep);
+  if (*seqSubs == NULL) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+    return FC_MEMORY_ERROR;
+  }
+
+  for (i = 0; i < seqSlot->numStep; i++){
+    // get an open slot
+    subSlot = _fc_getNewSubSlot();
+    if (!subSlot) {
+      fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+      return FC_MEMORY_ERROR;
+    }
+
+    // table header information
+    _FC_GET_HANDLE((*seqSubs)[i], subSlot);
+    _fc_setSlotHeaderName(&subSlot->header, subsetName);
+
+    // Setup subset metadata
+    subSlot->assoc = assoc;
+    subSlot->maxNumMember = num;
+
+    // set back and forth references
+    subSlot->mesh = mesh;
+    subSlot->sequence = sequence;
+    subSlot->stepID = i;
+  }
+
+  //set more back and forth references
+  tempNumPer = (int*)realloc(meshSlot->numStepPerSeqSub,
+			     (meshSlot->numSeqSub+1)*sizeof(int));
+  tempSlotIDs = (int**)realloc(meshSlot->seqSubIDs,
+			       (meshSlot->numSeqSub+1)*sizeof(int*));
+  if (!tempNumPer || ! tempSlotIDs) {
+    free(tempNumPer);
+    free(tempSlotIDs);
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+    return FC_MEMORY_ERROR;
+  }
+  tempSlotIDs[meshSlot->numSeqSub] = (int*)malloc(seqSlot->numStep*sizeof(int));
+  if (!tempSlotIDs[meshSlot->numSeqSub]) {
+    free(tempNumPer);
+    free(tempSlotIDs);
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+    return FC_MEMORY_ERROR;
+  }
+  meshSlot->numStepPerSeqSub = tempNumPer;
+  meshSlot->numStepPerSeqSub[meshSlot->numSeqSub] = seqSlot->numStep;
+  meshSlot->seqSubIDs = tempSlotIDs;
+  for (i = 0; i < seqSlot->numStep; i++) {
+    meshSlot->seqSubIDs[meshSlot->numSeqSub][i] = (*seqSubs)[i].slotID;
+  }
+  meshSlot->numSeqSub++;
+
+  return FC_SUCCESS;
+}
+
 //@}
 
 /** \name Other ways to get new subsets. */
@@ -284,6 +417,431 @@ FC_ReturnCode fc_copySubset(
 
   return FC_SUCCESS;
 }
+
+
+/**
+ * \ingroup Subset
+ * \brief  Copy seq subset
+ *
+ * \description
+ *  
+ *      Create a copy of a seq subset into the specified mesh with the given name.
+ *      This will return an erorr if the source and
+ *      destination sequences and meshes are not similiar enough.
+ *      This will copy a sequence if necessary. The destination mesh
+ *      and sequence need to belong to the same dataset of an error
+ *      will be returned.
+ *
+ * \modifications
+ *    - 03/05/08 ACG, created. 
+ */
+FC_ReturnCode fc_copySeqSubset(
+  int numStep, /**< input - the number of steps in the sequence variable */ 
+  FC_Subset* src_seqSubset, /**< input - the source seq subsets to be copied */
+  FC_Mesh dest_mesh,  /**< input - the destination mesh to be copied into */
+  FC_Sequence dest_seq, /**< input - the destination seq to be copied into */
+  char* newName, /**< input - the name of the new seqsubset, a NULL value is a flag 
+		    to use the name of the source seqsubset */
+  FC_Subset **new_seqSubset /**< output - array of handles to the new seq subset */
+){
+  FC_ReturnCode rc; 
+  _FC_MeshSlot* dest_meshSlot;
+  _FC_SeqSlot* dest_seqSlot;
+  _FC_SubSlot* subSlot;
+  FC_AssociationType assoc;
+  int numEntity, maxNumMember, numMember, *memberIDs;
+  int temp_numStep;
+  int i; 
+
+  // default returns
+  if (new_seqSubset)
+    *new_seqSubset =NULL;
+ 
+  // check input - NULL name is o.k.
+  dest_meshSlot = _fc_getMeshSlot(dest_mesh);
+  dest_seqSlot = _fc_getSeqSlot(dest_seq);
+  if (!fc_isSeqSubsetValid(numStep,src_seqSubset) || dest_meshSlot == NULL ||
+      dest_seqSlot == NULL || ! FC_HANDLE_EQUIV(dest_meshSlot->ds, dest_seqSlot->ds) ||
+      numStep != dest_seqSlot->numStep || new_seqSubset == NULL){
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  // check for null name
+  subSlot = _fc_getSubSlot(src_seqSubset[0]);
+  if (newName == NULL)
+    newName = subSlot->header.name;
+
+  // log message
+  fc_printfLogMessage("Copying seq subset '%s' to '%s'",
+                      subSlot->header.name, newName);
+
+  // get other info from source subset & dest mesh
+  rc = fc_getSubsetInfo(src_seqSubset[0], NULL, &maxNumMember, &assoc);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get info from subset.");
+    return FC_ERROR;
+  }
+  rc = fc_getMeshNumEntity(dest_mesh, assoc, &numEntity);
+  if (rc != FC_SUCCESS) 
+    return FC_INPUT_ERROR;
+
+  // more checking - destination mesh and subset assoc type are compatible
+  if (numEntity != maxNumMember ) {
+    fc_printfErrorMessage("%s: destination mesh not compatible with the subset", 
+                          fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  // --- do it
+  rc = fc_createSeqSubset(dest_mesh, dest_seq, newName, assoc, &temp_numStep,
+			  new_seqSubset);
+  if ( rc != FC_SUCCESS) {
+    fc_printfErrorMessage("error creating new seq subset '%s'",newName);
+    return rc;
+  }
+
+  //get and copy data for each step
+  for (i = 0; i < numStep; i++){
+    rc = fc_getSubsetMembersAsArray(src_seqSubset[i], &numMember, &memberIDs); 
+    if (rc != FC_SUCCESS) {
+      fc_printfErrorMessage("error in getting members from subset.");
+      fc_deleteSeqSubset(numStep, *new_seqSubset);
+      free(new_seqSubset);
+      return rc;
+    }
+    rc = fc_addArrayMembersToSubset((*new_seqSubset)[i], numMember, memberIDs);
+    if ( rc != FC_SUCCESS) {
+      fc_printfErrorMessage("error adding members to a new subset.");
+      fc_deleteSeqSubset(numStep, *new_seqSubset);
+      free(new_seqSubset);
+      if (memberIDs) free(memberIDs);
+      return rc;
+    }  
+    
+    // cleanup
+    if (memberIDs) free(memberIDs); //could have been empty subset
+  }
+
+  return FC_SUCCESS;
+}
+
+
+/**
+ * \ingroup  Subset
+ * \brief  Convert an array of basic subsets into a sequence subset
+ *
+ * \description
+ *
+ *    This routine converts an array of basic subsets into a sequence subset.
+ *    It is a LOT more efficient than copy the data of basic subsets into
+ *    the steps of a newly created seq subset because no creation/destruction
+ *    goes on -- it just changes how the mesh views the subset handles.
+ *
+ *    You should put the subsets in the order they will be on
+ *    the sequence. There must be the same number of subsets as there
+ *    are steps on the sequence. The subsets and the sequence have to be
+ *    in the same mesh. All of the subsets must be on the
+ *    same mesh and have the same metadata (except the name). The subsets
+ *    cannot already be part of a sequence subset.
+ *
+ *    If no name is supplied, the seqSubset will have the name of the
+ *    first subset.
+ *
+ *    (The array of subsets that is the seq subset should be exactly the
+ *    array passed in. A new one is made in case the original array
+ *    was automatically generated--fc_deleteSeqSubset would fail
+ *    on an automatically allocated array because it tries to free
+ *    the array of handles.)
+ *
+ *    \todo
+ *     - Note that unlike the seqVariable version we do not check that
+ *       they are on the same dataset. Is that a problem?
+ *    - check what happens with the committed flag. since
+ *      exodus doesnt store seqSubsets then a seq subset
+ *      cannot be commited, but what happens when we convert?
+ *      similiar issue with conversion of variables???
+ *
+ * \modifications  
+ *   - 03/05/08 ACG created
+ */
+FC_ReturnCode fc_convertSubsetsToSeqSubset(
+  int numStep,           /**< input - the number of steps */
+  FC_Subset* subs,     /**< input - the subsets (array numStep long)
+                            (this should be freed by user if malloc'd) */
+  FC_Sequence sequence,  /**< input - the sequence (with numStep steps) */
+  char* new_name,        /**< input - new name (optional) */
+  FC_Subset** seqSubset   /**< output - pointer to seq's subsets handles */
+) {
+  int i, j;
+  int temp_numStep;
+  FC_Mesh mesh;
+  _FC_MeshSlot* meshSlot;
+  _FC_SubSlot *subSlots[numStep];
+  int* subMask;
+  int *tempNumPer, **tempSlotIDs;
+  int *numBasicSub_p, **basicSubIDs_p;
+  int *numSeqSub_p, **numStepPerSeqSub_p, ***seqSubIDs_p;
+
+  // default return
+  if (seqSubset)
+    *seqSubset = NULL;
+
+  // test input -- a lot of conditions!
+  if (numStep < 0 || !subs || !fc_isSequenceValid(sequence) ||
+      !seqSubset) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+  fc_getSequenceNumStep(sequence, &temp_numStep);
+  if (numStep != temp_numStep) {
+    fc_printfErrorMessage("numStep (%d) does not agree with sequence's "
+                          "numStep (%d)", numStep, temp_numStep);
+    return FC_INPUT_ERROR;
+  }
+  for (i = 0; i < numStep; i++) {
+    if (!fc_isSubsetValid(subs[i])) {
+      fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+      return FC_INPUT_ERROR;
+    }
+    subSlots[i] = _fc_getSubSlot(subs[i]);
+    if (subSlots[i]->stepID >= 0) {
+      fc_printfErrorMessage("Subset is already part of a sequence subset");
+      return FC_INPUT_ERROR;
+    }
+  }
+  fc_getMeshFromSubset(subs[0], &mesh);
+  for (i = 1; i < numStep; i++) {
+    if (!FC_HANDLE_EQUIV(subSlots[i]->mesh, mesh)) {
+      fc_printfErrorMessage("subsets are not on same mesh");
+      return FC_INPUT_ERROR;
+    }
+    if (subSlots[i]->assoc        != subSlots[0]->assoc ||
+	subSlots[i]->maxNumMember        != subSlots[0]->maxNumMember) {
+      fc_printfErrorMessage("variables have differing metadata");
+      return FC_INPUT_ERROR;
+    }
+  }
+
+  // similar to fc_createSeqSubset()
+
+  // Change names
+  if (new_name) {
+    for (i = 0; i < numStep; i++) 
+      _fc_setSlotHeaderName(&subSlots[i]->header, new_name);
+  }
+  else {
+    for (i = 1; i < numStep; i++)
+      _fc_setSlotHeaderName(&subSlots[i]->header, subSlots[0]->header.name);
+  }
+
+  // change sub contents to reflect new state as seq subs
+  for (i = 0; i < numStep; i++) {
+    subSlots[i]->sequence = sequence;
+    subSlots[i]->stepID = i;
+  }
+
+  // get pointers to stuff on mesh depending
+  meshSlot = _fc_getMeshSlot(subSlots[0]->mesh);
+  numBasicSub_p = &meshSlot->numSub;
+  basicSubIDs_p = &meshSlot->subIDs;
+  numSeqSub_p = &meshSlot->numSeqSub;
+  numStepPerSeqSub_p = &meshSlot->numStepPerSeqSub;
+  seqSubIDs_p = &meshSlot->seqSubIDs;
+
+ // Add the handles to list of sequence vars
+  tempNumPer = (int*)realloc(*numStepPerSeqSub_p,
+			     ((*numSeqSub_p)+1)*sizeof(int)); 
+  tempSlotIDs = (int**)realloc(*seqSubIDs_p,
+			       (*numSeqSub_p+1)*sizeof(int*));
+  if (!tempNumPer || !tempSlotIDs) {
+    free(tempNumPer); free(tempSlotIDs);
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+    return FC_MEMORY_ERROR;
+  }
+  tempSlotIDs[*numSeqSub_p] = (int*)malloc(numStep*sizeof(int)); 
+  if (!tempSlotIDs[*numSeqSub_p]) {
+    free(tempNumPer); free(tempSlotIDs);
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+    return FC_MEMORY_ERROR;
+  }
+  tempNumPer[*numSeqSub_p] = numStep;
+  for (i = 0; i < numStep; i++) 
+    tempSlotIDs[*numSeqSub_p][i] = subs[i].slotID;
+  *numStepPerSeqSub_p = tempNumPer;
+  *seqSubIDs_p = tempSlotIDs;
+  *numSeqSub_p = (*numSeqSub_p) + 1;
+
+  // remove handles from list of basic subs
+  subMask = calloc(*numBasicSub_p, sizeof(int));
+  if (subMask == NULL) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+    return FC_MEMORY_ERROR;
+  }
+  for (i = 0; i < numStep; i++) {
+    for (j = 0; j < *numBasicSub_p; j++) {
+      if (subs[i].slotID == (*basicSubIDs_p)[j]) {
+        subMask[j] = 1;
+        break;
+      }
+    }
+    if (j == *numBasicSub_p) {
+      printf("**** developer note: something went wrong!!\n");
+      fflush(NULL);
+      return FC_ERROR;
+    }
+  }
+  j = 0;
+  *numBasicSub_p = *numBasicSub_p - numStep;
+  if (*numBasicSub_p == 0) {
+    free(*basicSubIDs_p);
+    *basicSubIDs_p = NULL;
+  }
+  else {
+    for (i = 0; i < *numBasicSub_p + numStep; i++) {
+      if (subMask[i] == 0) {
+        (*basicSubIDs_p)[j] = (*basicSubIDs_p)[i];
+        j++;
+      }
+    }
+  }
+  free(subMask);
+  // FIX realloc to make smaller
+
+  // make return values
+  *seqSubset = (FC_Subset*)malloc(numStep*sizeof(FC_Subset));
+  for (i = 0; i < numStep; i++)
+    (*seqSubset)[i] = subs[i];
+    
+  return FC_SUCCESS;
+}
+
+
+/**
+ * \ingroup  Subset
+ * \brief  Convert a sequence subset into an array of normal subsets.
+ *
+ * \description
+ *
+ *    This routine converts a sequence subset into an array of basic subsets.
+ *    It is a LOT more efficient than copy the data of a seq subset into
+ *    the steps of newly created basic subsets because no creation/destruction
+ *    goes on -- it just changes how the mesh views the subset handles.
+ *
+ *    The subsets will come out in the step order. Number of output subsets
+ *    will be the number of steps in the original seqSubset. If a name is
+ *    passed in the subsets will be named as the name postpended with "_#" where
+ *    the number is the step number. Otherwise they will be named with the
+ *    current name similiarly postpended. Note that if you are using this
+ *    method for conversions to write to exodus, be sure that any name you
+ *    use if short enough so that the name is under the exodus name character
+ *    limit, or else the numbering will be lost.
+ *
+ * \todo
+ *   - this has max length of digit postpending as 40 char - actaully
+ *     calc the powers of 10 to set this correctly
+ *
+ * \modifications  
+ *   - 03/13/08 ACG created
+ */
+FC_ReturnCode fc_convertSeqSubsetToSubsets(
+  int numStep,             /**< input - the number of new steps in the seqSubset */
+  FC_Subset* seqSubset,     /**< input - the seqSubset */
+  char* new_name,        /**< input - new name (optional) */
+  FC_Subset** subsets    /**< output - array of subsets */  
+) {
+  _FC_MeshSlot* meshSlot;
+  _FC_SubSlot* subSlot;
+  char* newSubsetName;
+  int* tempSlotIDs;
+  int i, j;
+
+  // default return
+  if (subsets)
+    *subsets = NULL; 
+
+  // check input  
+  if (!subsets || !seqSubset || !fc_isSeqSubsetValid(numStep, seqSubset) || numStep == 0) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+
+  subSlot = _fc_getSubSlot(seqSubset[0]);
+  meshSlot = _fc_getMeshSlot(subSlot->mesh);
+
+  // log message
+  fc_printfLogMessage("Copying seq subset '%s' to basic subsets",
+                      subSlot->header.name);
+
+  //remove handles from the list of sequence subs
+  if (meshSlot->numSeqSub == 1){
+    free(meshSlot->numStepPerSeqSub);
+    meshSlot->numStepPerSeqSub = NULL;
+    free(meshSlot->seqSubIDs[0]);
+    free(meshSlot->seqSubIDs);
+    meshSlot->seqSubIDs = NULL;
+    meshSlot->numSeqSub = 0;
+  } else {
+    for (i = 0; i < meshSlot->numSeqSub; i++) {
+      if ((meshSlot->seqSubIDs)[i][0] == subSlot->header.slotID)
+	break;
+    }
+    free((meshSlot->seqSubIDs)[i]);
+    for (j = i+1; j < meshSlot->numSeqSub; j++){
+      (meshSlot->numStepPerSeqSub)[j-1] = (meshSlot->numStepPerSeqSub)[j];
+      (meshSlot->seqSubIDs)[j-1] = (meshSlot->seqSubIDs)[j];
+    }
+    meshSlot->numSeqSub--;
+  }
+
+  tempSlotIDs = realloc(meshSlot->subIDs, sizeof(int)*(meshSlot->numSub+numStep));
+  if (tempSlotIDs == NULL){
+      fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+      return FC_MEMORY_ERROR;
+  }
+  meshSlot->subIDs = tempSlotIDs;
+
+  if (new_name == NULL){
+    newSubsetName = (char*)malloc((strlen(subSlot->header.name)+1)*
+				  sizeof(char));
+    strcpy(newSubsetName, subSlot->header.name);
+  } else {
+    newSubsetName = (char*)malloc((strlen(new_name)+1)*
+				  sizeof(char));
+    strcpy(newSubsetName, new_name);
+  }
+
+  //add handles to the list of basic subs
+  for (i = 0; i < numStep; i++) {
+    char* temp_name;
+    //change sub contents to reflect new as state non seq subset
+    subSlot = _fc_getSubSlot(seqSubset[i]);
+    subSlot->sequence = FC_NULL_SEQUENCE;
+    subSlot->stepID = -1;
+    temp_name = malloc((strlen(newSubsetName)+40)*sizeof(char));
+    if (temp_name == NULL) {
+      free(newSubsetName);
+      fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+      return FC_MEMORY_ERROR;
+    }
+    snprintf(temp_name, strlen(newSubsetName)+40,
+	       "%s_%d", newSubsetName, i);
+    _fc_setSlotHeaderName(&subSlot->header, temp_name);
+    free(temp_name);
+    meshSlot->subIDs[meshSlot->numSub] = subSlot->header.slotID;
+    meshSlot->numSub++;
+  }
+  free(newSubsetName);
+
+  // make return values
+  *subsets= (FC_Subset*)malloc(numStep*sizeof(FC_Subset));
+  for (i = 0; i < numStep; i++)
+    (*subsets)[i] = seqSubset[i];
+    
+  return FC_SUCCESS;
+}
+
 
 /**
  * \ingroup Subset
@@ -740,6 +1298,85 @@ FC_ReturnCode fc_getSubsets(
 
 /**
  * \ingroup  Subset
+ * \brief  Get the seq subsets in a mesh.
+ *
+ * \description
+ *  
+ *    This returns an array of the seq subsets in the mesh (array of arrays of subsets)
+ *    as well as an array of the number of steps per seq subset. The caller is
+ *    responsible for freeing all returned arrays. (SeqSubs is a 2D array 
+ *    so to free: for (i = 0; i < numSeqSub) { free(seqSub[i])}  )
+ *
+ * \modifications  
+ *   - 03/03/08 ACG Created.  
+ */
+FC_ReturnCode fc_getSeqSubsets(
+ FC_Mesh mesh,        /**< input - mesh */
+ int *numSeqSubs,      /**< output - number of seq subsets */
+ int **numStepPerSub,      /**< output - array with number of steps for
+				each seq sub */
+ FC_Subset ***seqSubs  /**< output - array of seq subsets (each
+			   seq sub is an array of numStep subsets) */
+) {
+  _FC_MeshSlot* meshSlot;
+  _FC_SubSlot* subSlot;
+  int i,j;
+  
+  // set up defaults
+  if (numSeqSubs != NULL)
+    *numSeqSubs = -1;
+  if (numStepPerSub != NULL)
+    *numStepPerSub = NULL;
+  if (seqSubs != NULL)
+    *seqSubs = NULL;
+
+  // check input
+  meshSlot = _fc_getMeshSlot(mesh);
+  if (meshSlot == NULL || numSeqSubs == NULL || numStepPerSub == NULL ||
+      seqSubs == NULL) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+  
+  // log message
+  fc_printfLogMessage("Getting seq subsets from mesh '%s'", 
+                      meshSlot->header.name);
+
+  // get num seq subsets
+  *numSeqSubs = meshSlot->numSeqSub;
+  
+  // get seq subsets
+  if (*numSeqSubs > 0) {
+    *numStepPerSub = malloc(sizeof(int) * (*numSeqSubs));
+    if (*numStepPerSub == NULL) {
+      fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+      return FC_MEMORY_ERROR;
+    }
+    *seqSubs = malloc(sizeof(FC_Subset*) * (*numSeqSubs));
+    if (*seqSubs == NULL) {
+      fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+      return FC_MEMORY_ERROR;
+    }
+    for (i = 0; i < *numSeqSubs; i++) {
+      (*numStepPerSub)[i] = meshSlot->numStepPerSeqSub[i];
+      (*seqSubs)[i] = malloc(meshSlot->numStepPerSeqSub[i]*sizeof(FC_Subset));
+      if ( (*seqSubs)[i] == NULL) {
+	fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	return FC_MEMORY_ERROR;
+      }
+      for (j = 0; j < meshSlot->numStepPerSeqSub[i]; j++){
+	subSlot = _fc_getSubSlotFromID(meshSlot->seqSubIDs[i][j]);
+	_FC_GET_HANDLE((*seqSubs)[i][j],subSlot);
+      }
+    }
+  }
+  
+  return FC_SUCCESS;
+}
+
+
+/**
+ * \ingroup  Subset
  * \brief  Get the number of subsets in a mesh.
  *
  * \modifications  
@@ -768,6 +1405,41 @@ FC_ReturnCode fc_getNumSubset(
 
   // get num subset
   *numSubset = meshSlot->numSub;
+
+  return FC_SUCCESS;
+}
+
+
+/**
+ * \ingroup  Subset
+ * \brief  Get the number of seq subsets in a mesh.
+ *
+ * \modifications  
+ *    - 03/03/08 ACG created
+ */
+FC_ReturnCode fc_getNumSeqSubset(
+ FC_Mesh mesh,        /**< input - mesh */
+ int *numSeqSubset       /**< output - number of subsets */
+) {
+  _FC_MeshSlot* meshSlot;
+  
+  // set up defaults
+  if (numSeqSubset != NULL)
+    *numSeqSubset = -1;
+  
+  // check input
+  meshSlot = _fc_getMeshSlot(mesh);
+  if (meshSlot == NULL || numSeqSubset == NULL) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+  
+  // log message
+  fc_printfLogMessage("Getting number of seq subsets from mesh '%s'", 
+                      meshSlot->header.name);
+
+  // get num subset
+  *numSeqSubset = meshSlot->numSeqSub;
 
   return FC_SUCCESS;
 }
@@ -858,6 +1530,128 @@ FC_ReturnCode fc_getSubsetByName(
   return FC_SUCCESS;
 
 }
+
+
+/**
+ * \ingroup  Subset
+ * \brief  Get sequence subsets of a given name from the mesh.
+ *
+ * \description
+ *
+ *    Returns an array of seq subset (array of arrays of subsets)
+ *    as well as an array of the number of steps per sequence subset.
+ *    The use is responsible for freeing all returned arrays.
+ *    (SeqSubsets is a 2D array, so to free: for (i = 0; i < numSeq subs) {
+ *    free(seqSubsets[i])); } )
+ *
+ *
+ * \modifications  
+ *   - 03/04/08 ACG created
+ */
+FC_ReturnCode fc_getSeqSubsetByName(
+  FC_Mesh mesh,              /**< input - mesh handle */
+  char *subName,             /**< input - seq subset name */
+  int *numSeqSubset,       /**< output - number of sequence subsets */
+  int** numStepPerSubset,  /**< output - array with number of steps for each
+                          sequence subset */
+  FC_Subset ***seqSubsets  /**< output - array of sequence subsets (each
+				  sequence subset is array of numStep
+				  subsets */
+) {
+  int i, j;
+  _FC_MeshSlot *meshSlot;
+  _FC_SubSlot *subSlot;
+
+  int numStep;
+  FC_Subset *seqsub;
+  FC_Subset **lmatch = NULL;
+  int *lstepmatch = NULL;
+  int numlmatch, maxnumlmatch;
+  
+  // default return values
+ if (numSeqSubset != NULL)
+    *numSeqSubset = -1;
+  if (numStepPerSubset != NULL)
+    *numStepPerSubset = NULL;
+  if (seqSubsets != NULL)
+    *seqSubsets = NULL;
+
+  // check input
+  meshSlot = _fc_getMeshSlot(mesh);
+  if (meshSlot == NULL || !subName || numSeqSubset == NULL || 
+      numStepPerSubset == NULL || seqSubsets == NULL) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+  
+  // log message
+  fc_printfLogMessage("Getting sequence subset '%s'", subName);
+
+  numlmatch = 0;
+  maxnumlmatch = 0;
+
+ // look for subName in this mesh's seq sub list
+  for (i = 0; i < meshSlot->numSeqSub; i++) {
+    subSlot = _fc_getSubSlotFromID(meshSlot->seqSubIDs[i][0]);
+    if (!strcmp(subName, subSlot->header.name)) {
+      numStep = meshSlot->numStepPerSeqSub[i];
+      seqsub = malloc((numStep)*sizeof(FC_Subset));
+      if (seqsub == NULL) {
+	fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	return FC_MEMORY_ERROR;
+      }
+      for (j = 0; j < numStep; j++) {
+	subSlot = _fc_getSubSlotFromID(meshSlot->seqSubIDs[i][j]);
+	_FC_GET_HANDLE(seqsub[j], subSlot);
+      }
+
+      if (lmatch == NULL){
+	lmatch = (FC_Subset**)malloc(sizeof(FC_Subset*));
+	lstepmatch = (int*)malloc(sizeof(int));
+	if (lmatch == NULL || lstepmatch == NULL){
+	  fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	  return FC_MEMORY_ERROR;
+	}
+	numlmatch = 1;
+	maxnumlmatch = 1;
+	lmatch[0] = seqsub;
+	lstepmatch[0] = numStep;
+      }else{
+	if(numlmatch == maxnumlmatch){
+	  FC_Subset **temp;
+	  int *tempstep;
+	  temp = (FC_Subset**)realloc(lmatch,(2*numlmatch)*sizeof(FC_Subset*));
+	  tempstep = (int*)realloc(lstepmatch,(2*numlmatch)*sizeof(FC_Subset*));
+	  if (temp == NULL || tempstep == NULL){
+	    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	    return FC_MEMORY_ERROR;
+	  }
+	  maxnumlmatch*=2;
+	  lmatch = temp;
+	  lstepmatch = tempstep;
+	}
+	lmatch[numlmatch] = seqsub;
+	lstepmatch[numlmatch] = numStep;
+	numlmatch++;
+      }
+    }
+  }
+
+  if (numlmatch){
+    *numSeqSubset = numlmatch;
+    *numStepPerSubset = lstepmatch;
+    *seqSubsets = lmatch;
+    return FC_SUCCESS;
+  }
+
+  //no matches
+  *numSeqSubset = 0;
+  *numStepPerSubset = NULL;
+  *seqSubsets = NULL;
+  return FC_SUCCESS;
+
+}
+
 
 //@}
 
@@ -1152,6 +1946,42 @@ FC_ReturnCode fc_changeSubsetName(
   
   // Do it
   return _fc_setSlotHeaderName(&subSlot->header, newName);
+}
+
+/**
+ * \ingroup Subset
+ * \brief  Change the name of a sequence subset
+ *
+ * \modifications
+ *   - 03/04/08 ACG created
+ */
+FC_ReturnCode fc_changeSeqSubsetName(
+  int numStep, /**< Input - Number of steps in the seq subset. */
+  FC_Subset* subsets, /**< Input - the steps of the seq subset. */
+  char* newName       /**< Input - new name for the seq subset. */
+) {
+  FC_ReturnCode rc, rc_keep = FC_SUCCESS;
+  int i;
+  _FC_SubSlot* subSlot;
+
+  // check input
+  if (!fc_isSeqSubsetValid(numStep, subsets) || newName == NULL) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  // log message
+  subSlot = _fc_getSubSlot(subsets[0]); 
+  fc_printfLogMessage("Changing name of seq subset from '%s' to '%s'", 
+                      subSlot->header.name, newName);
+  
+  // Do it
+  for (i = 0; i < numStep; i++) {
+    rc = _fc_setSlotHeaderName(&subSlot->header, newName);
+    if (rc != FC_SUCCESS)
+      rc_keep = rc;
+  }
+  return rc_keep;
 }
 
 //@}
@@ -1572,6 +2402,69 @@ FC_ReturnCode fc_releaseSubset(
   return FC_SUCCESS;
 }
 
+
+/**
+ * \ingroup  Subset
+ * \brief  Attempt to minimize seq subset's memory usage.
+ *
+ * \description
+ *  
+ *    Call to try and release un-needed memory in a seq subset. 
+ *    If the subset has been saved to disk, the large data is 
+ *    released. If the subset has not been saved to disk, this 
+ *    will do nothing.
+ *
+ *   fc_releaseSubset() can be called on specific steps of the
+ *   seq subset.
+ *
+ *   \todo
+ *    - test this. note that there is no way to have
+ *      commmitted seqSubsets in exodus
+ *
+ * \modifications  
+ *    - 03/03/08 ACG Created.
+ */
+FC_ReturnCode fc_releaseSeqSubset(
+  int numStep, /**< input - number of steps in the seq subset */
+  FC_Subset* subsets       /**< input - subset handles */
+) {
+  FC_ReturnCode rc, rc_keep = FC_SUCCESS;
+  int i;
+  _FC_SubSlot* subSlot;
+
+  // special case: releasing a null handle is not an error
+  if ( numStep < 1 || subsets == NULL) {
+    fc_printfWarningMessage("Releasing NULL seq subset");
+    return FC_SUCCESS;
+  }
+
+  // check input
+  if (!fc_isSeqSubsetValid(numStep, subsets)) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+  
+  subSlot = _fc_getSubSlot(subsets[0]);
+  if (subSlot == NULL) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+  
+  // log message
+  fc_printfLogMessage("Cleaning up subset '%s'", subSlot->header.name);
+
+  //do it
+  rc_keep = FC_SUCCESS;
+  for (i = 0; i < numStep; i++) {
+    rc = fc_releaseSubset(subsets[i]);
+    if (rc != FC_SUCCESS)
+      rc_keep = rc;
+  }
+
+  return rc_keep;
+
+}
+
 /**
  * \ingroup Subset
  * \brief  Delete a subset.
@@ -1632,6 +2525,83 @@ FC_ReturnCode fc_deleteSubset(
   return _fc_deleteSubSlot(subset);
 }
 
+
+/**
+ * \ingroup Subset
+ * \brief  Delete a seq subset.
+ *
+ * \description
+ * 
+ *    Call when this seq subset is no longer needed.
+ *
+ *    NOTE: this does not delete the array of subset handles that makes
+ *    up the seq subset, the user is still responsible for this.
+ *
+ * \modifications  
+ *    - 03/03/08 ACG created
+ */
+FC_ReturnCode fc_deleteSeqSubset(
+  int numStep,		/**< input - the number of subset handles*/		 
+  FC_Subset* subsets    /**< input - subset handles */
+) {
+  FC_ReturnCode rc, rc_keep;
+  _FC_SubSlot* first_subSlot;
+  _FC_MeshSlot* meshSlot;
+  int i, j;
+         
+  // special case: deleting a null list is not an error
+  if (numStep <= 0 && subsets == NULL) {
+    fc_printfWarningMessage("Deleting NULL seq subset");
+    return FC_SUCCESS;
+  }
+
+  // check input
+  if (!fc_isSeqSubsetValid(numStep, subsets)) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  first_subSlot = _fc_getSubSlot(subsets[0]);
+  if (first_subSlot == NULL) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+  // log message
+  fc_printfLogMessage("Deleting subset '%s'", first_subSlot->header.name);
+
+  //remove references from mesh
+  meshSlot = _fc_getMeshSlot(first_subSlot->mesh);
+  if (meshSlot->numSeqSub == 1 ) {
+    free(meshSlot->numStepPerSeqSub);
+    meshSlot->numStepPerSeqSub = NULL;
+    free(meshSlot->seqSubIDs[0]);
+    free(meshSlot->seqSubIDs);
+    meshSlot->seqSubIDs = NULL;
+    meshSlot->numSeqSub = 0;
+  } else {
+    for (i = 0; i < meshSlot->numSeqSub; i++){
+      if ((meshSlot->seqSubIDs)[i][0] == first_subSlot->header.slotID)
+        break;
+    }
+    free((meshSlot->seqSubIDs)[i]);
+    for (j = i+1; j < meshSlot->numSeqSub; j++) {
+      (meshSlot->numStepPerSeqSub)[j-1] = (meshSlot->numStepPerSeqSub)[j];
+      (meshSlot->seqSubIDs)[j-1] = (meshSlot->seqSubIDs)[j];
+    }
+    meshSlot->numSeqSub--;
+  }
+
+  // clear & delete slots
+  rc_keep = FC_SUCCESS;
+  for (i = 0; i < numStep; i++){
+    rc = _fc_deleteSubSlot(subsets[i]);
+    if (rc != FC_SUCCESS)
+      rc_keep = rc;
+  }
+
+  return rc_keep;
+}
+
 //@}
 
 /** \name Get subset metadata. */
@@ -1655,6 +2625,64 @@ int fc_isSubsetValid(
   return _fc_isHandleValid(subset.slotID, subset.uID, subTableSize,
                            (_FC_SlotHeader**)subTable);
 }
+
+
+/**
+ * \ingroup  Subset
+ * \brief Check that the handle refers to a valid subset.
+ *
+ * \description
+ *
+ *    Returns 1 (true) if the seq subset handle is valid, and 0 (false)
+ *    if it is not. Valid means numStep is correct and all subset handles
+ *    are valid and in correct order)
+ *
+ * \modifications  
+ *    - 03/03/08 ACG created
+ */
+int fc_isSeqSubsetValid(
+  int numStep,	    /**< input - num of steps in seq sub */
+  FC_Subset *seqSub  /**< input - seq subset (array of subsets) */
+) {
+  int i;
+  _FC_SubSlot* subSlot;
+  _FC_SeqSlot* seqSlot;
+  _FC_MeshSlot* meshSlot;
+  int sub_id;  //id's into mesh's slotID arrays
+
+  //quick check
+  if (numStep < 0 || seqSub == NULL || !fc_isSubsetValid(seqSub[0]))
+    return 0;
+  // check that numStep agrees with sequence
+  subSlot = _fc_getSubSlot(seqSub[0]);
+  seqSlot = _fc_getSeqSlot(subSlot->sequence);
+  if (numStep != seqSlot->numStep)
+    return 0;
+  //check that all steps are valid and fromt he same subset
+  //instead of checking metadata, we check against the parent's list
+  meshSlot = _fc_getMeshSlot(subSlot->mesh);
+  sub_id = -1;
+  for (i = 0; i < meshSlot->numSeqSub; i++){
+    if (subSlot->header.slotID == (meshSlot->seqSubIDs)[i][0]){
+      sub_id = i;
+      break;
+    }
+  }
+  if (sub_id == -1){
+    fc_printfErrorMessage("bad code? shouldn't ever happen?");
+    return FC_ERROR;
+  }
+  for (i = 1; i < numStep; i++){
+    if (!fc_isSubsetValid(seqSub[i]) ||
+	seqSub[i].slotID != (meshSlot->seqSubIDs)[sub_id][i])
+      return 0;
+  }
+
+  //passed all tests
+  return 1;
+}
+
+
 
 /**
  * \ingroup Subset
@@ -2093,6 +3121,42 @@ FC_ReturnCode fc_getSubsetMembersAsMask(
   return FC_SUCCESS;
 }
 
+/**
+ * \ingroup Subset
+ * \brief Get the parent sequence of a seq subset
+ *
+ * \modifications
+ * - 03/03/08 ACG created
+ */
+FC_ReturnCode fc_getSequenceFromSeqSubset(
+  int numStep,    /**< input - number of steps in sequence variable */
+  FC_Subset *seqSubset, /**< input - sequence subset (array of subsets) */
+  FC_Sequence *sequence /**< output - sequence handle */
+  ){
+  _FC_SubSlot* subSlot;
+
+  //set default value
+  if (sequence != NULL)
+    *sequence = FC_NULL_SEQUENCE;
+
+  //check input
+  if (!fc_isSeqSubsetValid(numStep, seqSubset) || sequence == NULL) {
+    fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+    return FC_INPUT_ERROR;
+  }
+
+  //log message
+  subSlot = _fc_getSubSlot(seqSubset[0]);
+  fc_printfLogMessage("Getting sequence from seq subset '%s'",
+		      subSlot->header.name);
+  
+  //return requested value
+  *sequence = subSlot->sequence;
+
+  return FC_SUCCESS;
+}
+
+
 //@}
 
 /** \name Print subset. */
@@ -2176,6 +3240,143 @@ FC_ReturnCode fc_printSubset(
 
   return FC_SUCCESS;
 }
+
+/** \name Print Sequence Subset Range. */
+//-------------------------------
+//@{
+
+/**
+ * \ingroup  Subset
+ * \brief Print sequence subset meta data to stdout, and optionally the member IDs
+ *        (with start and stop index values)
+ *
+ * \modifications 
+ *    - 04/29/08 CDU, created.
+ */
+FC_ReturnCode fc_printSeqSubsetRange(
+  int numStep,          /**< input - number of steps in sequence subset */
+  FC_Subset *seqSubset, /**< input - the sequence subset */
+  int range_start,      /**< input - offset of first variable to print  
+		                     or -1 for first, -2 for last */
+  int range_stop,       /**< input - offset of last variable to print 
+		                     or -1 for first, -2 for last */
+  char *label,          /**< input - label to prepend variable name with, 
+		                     can be NULL */
+  int print_members     /**< input - print the data values.*/
+		                     
+){
+
+  FC_ReturnCode rc;
+  int i,k;
+  _FC_SubSlot* subSlots[numStep];
+  int start, stop, mod;
+  int maxNumMember, numMember;
+  FC_AssociationType assoc;
+  int* members;
+
+  // special case: printing a null handle is not an error
+  if(numStep <= 0 || seqSubset == NULL) {
+    fc_printfWarningMessage("Printing a NULL sequence subset");
+    printf("Sequence Subset: FC_NULL_VARIABLE\n");
+    return FC_SUCCESS;
+  }
+
+  //Check input
+  for(i=0; i<numStep; i++){
+    subSlots[i] = _fc_getSubSlot(seqSubset[i]);
+    if(subSlots[i] == NULL){
+      fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_INPUT_ERROR));
+      return FC_INPUT_ERROR;
+    }
+  }
+
+  //log message
+  fc_printfLogMessage("Printing SeqSubset '%s'", subSlots[0]->header.name); 
+
+  // print label & var name
+  if (label)
+    printf("%s: ", label);
+  else
+    printf("Sequence Subset: ");
+  printf("'%s'\n", subSlots[0]->header.name);
+  fflush(NULL);
+
+  // print meta data
+  rc = fc_getSubsetInfo(seqSubset[0], &numMember, &maxNumMember, &assoc);
+  if (rc != FC_SUCCESS) {
+    fc_printfErrorMessage("Failed to get info for subset '%s'",
+                          subSlots[0]->header.name);
+    return rc;
+  }
+
+  printf("%snumMember = %d, maxNumMember = %d\n", INDENT_STR, 
+         numMember, maxNumMember);
+  printf("%sassoc = %s\n", INDENT_STR, fc_getAssociationTypeText(assoc));
+  fflush(NULL);  
+
+  if( print_members && numStep){
+
+    //Handle special case where start/stop are the first/last steps
+    if(range_start<0){
+      start = (range_start==-2) ? numStep-1 : 0;
+    } else {
+      start = (range_start>numStep-1) ? numStep-1 : range_start;
+    }
+    if(range_stop<0){
+      stop = (range_stop==-2) ? numStep-1 : 0;
+    } else {
+      stop = (range_stop>numStep-1) ? numStep-1 : range_stop;
+    }
+
+    //Calculate the step size's direction
+    mod   = (start<=stop)   ? 1 : -1;
+
+    for(k=start; (mod>0) ? (k<=stop) : (k>=stop) ; k+= mod){
+      rc = fc_getSubsetMembersAsArray(seqSubset[k], &numMember, &members);
+      if (rc != FC_SUCCESS) {
+	fc_printfErrorMessage("Failed to get members for sequence subset '%s' step %d",
+			      subSlots[k]->header.name, k);
+	return FC_ERROR;
+      }
+
+      // print the members
+      printf("%sMember IDs (Step %d of seqSubset '%s'):\n", 
+	     INDENT_STR, k, subSlots[0]->header.name);
+      for (i = 0; i < numMember; i++) 
+	printf("%s%s%d:  %6d\n", INDENT_STR, INDENT_STR, i, members[i]);
+      fflush(NULL);
+      
+      free(members);
+    }
+  }
+
+  return FC_SUCCESS;  
+}
+//}@
+
+/** \name Print Sequence Subset*/
+//-------------------------------
+//@{
+
+/**
+ * \ingroup  Subset
+ * \brief Print sequence subset meta data to stdout, and optionally the member IDs
+ *
+ * \modifications 
+ *    - 04/29/08 CDU, created.
+ */
+FC_ReturnCode fc_printSeqSubset(
+  int numStep,          /**< input - number of steps in sequence subset */
+  FC_Subset *seqSubset, /**< input - the sequence subset */
+  char *label,          /**< input - label to prepend variable name with, 
+		                     can be NULL */
+  int print_members     /**< input - print the data values. */
+){
+  return fc_printSeqSubsetRange(numStep, seqSubset, -1, -2, label, print_members);
+}
+//}@
+
+
 
 /**
  * \ingroup  Subset
@@ -2500,6 +3701,7 @@ FC_ReturnCode fc_printSubsetOfVariable(
  *
  * \modifications  
  *    - 05/11/04 WSK. Created.
+ *    - 03/03/08 ACG support sequence subset
  */
 void _fc_initSubSlot(
   _FC_SubSlot* subSlot    /**< input - the subset slot to initialize */
@@ -2507,6 +3709,8 @@ void _fc_initSubSlot(
   if (subSlot != NULL) {
     _fc_initSlotHeader(&subSlot->header);
     subSlot->mesh = FC_NULL_MESH;
+    subSlot->sequence = FC_NULL_SEQUENCE;
+    subSlot->stepID = -1;
     subSlot->assoc = FC_AT_UNKNOWN;
     subSlot->numMember = 0;
     subSlot->maxNumMember = 0;

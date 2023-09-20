@@ -77,7 +77,7 @@ typedef struct {
   FC_Mesh mesh;       /**< Handle to the owning mesh. If this is a global
 		       variable, this will be FC_NULL_MESH. */
   FC_Sequence sequence; /**< Handle to owning sequence (can be NULL) */
-  int stepID;      /**< ID of step in a sequence, -1 if sequence != NULL */
+  int stepID;      /**< ID of step in a sequence, -1 if sequence == NULL */
   //---File reference
   _FC_VarFileIOInfo fileInfo; /**< Holds info pertinent to file access. */
    //---About the variable:  data
@@ -110,6 +110,12 @@ _FC_VarSlot* _fc_getNewVarSlot(void);
 FC_ReturnCode _fc_deleteVarSlot(FC_Variable variable);
 void _fc_printVarTable(char *label);
 void  _fc_freeVarTable(void);
+
+FC_ReturnCode _fc_getNextComponentExtension(
+		       unsigned int *state,
+		       unsigned int *last_col_in_row, 
+		       unsigned int *last_col_in_search,
+		       char *extension);
 
 #ifdef __cplusplus
 }

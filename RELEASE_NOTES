@@ -42,6 +42,85 @@ Latest Release
 -------------------------------------------------------------------------------
 
 
+Version 1.7.0 (current)
+
+What's new:
+
+* Subset module:
+
+  o new Data Structure SeqSubset. SeqSubset is to Subset as SeqVariable is to
+    Variable. A variety of new functions are provided for this. Note that
+    Exodus does not support this construct and so seqSubsets are written out as
+    normal subsets with a naming convention indication of sequence step.
+
+* Mesh module:
+
+  o createSubsetMesh allows you to optionally copy only the geom, or
+    combinations of types - var, seqvar, subset, seqsubset.
+  o createSubsetMesh also writes out to the new mesh new variables
+    FC_ELEMENTMAP and FC_VERTEXMAP which store the ids of the original mesh
+    entities. These can be used for mapping items back to the original mesh
+    later. Note that these are ints but exodus writes tehm out as doubles and
+    they are read back in that way.
+  o copyMesh allows you to optionally copy only the geom, or combinations of
+    types - var, seqvar, subset, seqsubset.
+
+* Variable module:
+
+  o copyVariableFromRegionMesh - copies a var from a smaller (region) mesh to a
+    larger (orig) one using the FC_ELEMENTMAP or FC_VERTEXMAP which store the
+    ids of the orig mesh entities. Used for taking variables created on a mesh
+    that was created via createSubsetMesh and putting them back on the original
+    mesh.
+  o copyVariableToRegionMesh - copies a var from a larger mesh to a smaller one
+    using the the FC_ELEMENTMAP or FC_VERTEXMAP which store the ids of the orig
+    mesh entities. Used for taking variables on an original mesh and copying
+    them to a mesh that was created via createSubsetMesh.
+  o copySeqVariableStepFromRegionMesh - copies a var from a smaller (region)
+    mesh to a sequence step within a larger (orig) one using the FC_ELEMENTMAP
+    or FC_VERTEXMAP which store the ids of the orig mesh entities. Used for
+    taking variables created on a mesh that was created via createSubsetMesh
+    and putting them back on the original mesh into a particular sequence step.
+
+* Exodusio module:
+
+  o Read in and write out of node, elem, and side sets. Empty sets of all type
+    (node, element, side) are written to all meshes when they are read in.
+
+* Tools:
+
+  o subsetter tool for subsetting on a variable with optional promotion to
+    mesh. If promote to mesh, then can use upcoming reassembler tool to put
+    things back on the original mesh. The subsetter and reassmbler tools were
+    intended for determination of I/O savings for dumping (in situ) only the
+    regions of interest of a simulation
+  o regionreassmbler tool for reassembling vars on subsets promoted to meshes
+    (created via the subsetter tool) back onto the original mesh. The subsetter
+    and reassmbler tools were intended for determination of I/O savings for
+    dumping (in situ) only the regions of interest of a simulation
+  o skeleton tools for generating trees that represent the structure of a mesh.
+    These tools extract a spanning tree representation of a mesh. Tree
+    structures can then be reduced in size and complexity through whittle
+    tools.
+
+
+Deprecations:
+
+* copyMesh and createSubsetMesh API's have changed as above
+
+Bug Fixes:
+
+* Exodus 4.61 had problems with supporting nodal subsets under some conditions.
+  Exodus 4.71 or later is required
+* Read in and write out empty node, side, and element sets in Exodus.
+
+Known Issues:
+
+-------------------------------------------------------------------------------
+Previous Releases
+-------------------------------------------------------------------------------
+
+
 Version 1.6.1 (10/31/2007)
 
 What's new:
@@ -116,11 +195,6 @@ Known Issues:
   functions. This tool is no longer supported and may be removed since SAF has
   been removed.
 
-
-
--------------------------------------------------------------------------------
-Previous Releases
--------------------------------------------------------------------------------
 
 
 Version 1.4.0 (10/20/06)

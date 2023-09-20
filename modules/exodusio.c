@@ -452,9 +452,13 @@ FC_ReturnCode _fc_initExodus(void)
  *    is loaded immediately, but the big data arrays are not 
  *    loaded until needed (this happens automatically).
  *
+ *    Currently we support reading in empty node, elem, and
+ *    side sets. these will be placed on all meshes.
+ *
  *  \todo
  *   - make elem sets lazy load
  *   - should we automatically take out the exodus ID named items (props)?
+ *   - should FC_ELEMENTMAP and FC_VERTEXMAP be changed to ints?
  *
  * \modifications
  *    - 8/1/05 WSD Created.
@@ -462,6 +466,8 @@ FC_ReturnCode _fc_initExodus(void)
  *    - 10/3/07 ACG Nodal attr
  *    - 10/X/07 ACG Elem sets
  *    - 10/17/07 ACG removed names support
+ *    - 02/02/08 ACG empty node and elem set support.
+ *    - 05/12/08 ACG empty side set support
  */
 FC_ReturnCode _fc_loadExodusDataset(
   char* filename,      /**< input - name of Exodus dataset to open. */
@@ -480,7 +486,8 @@ FC_ReturnCode _fc_loadExodusDataset(
   int *numElemAttr;
   int numNodalAttr;
   int **hasVerts;
-  char title[MAX_LINE_LENGTH+1], namebuf[MAX_STR_LENGTH];
+  //some question if this should be MAX_STR_LENGTH or MAX_LINE_LENGTH
+  char title[MAX_LINE_LENGTH+1], namebuf[MAX_STR_LENGTH+1];
   char *temp_name;
   float fdum;
   char* cdum;
@@ -520,14 +527,14 @@ FC_ReturnCode _fc_loadExodusDataset(
     return FC_FILE_IO_ERROR;
   }
 
-
   // Get file parameters
   error = ex_get_init_ext(exoid, &exoParams);
   if (error != 0) {
     fc_printfErrorMessage("Exodus failed to read file parameters");
     return FC_FILE_IO_ERROR;
   }
-  strncpy(title, exoParams.title, MAX_STR_LENGTH);
+  strncpy(title, exoParams.title, MAX_STR_LENGTH+1);
+  title[MAX_STR_LENGTH] = '\0';
   numDim = exoParams.num_dim;
   numTotalVert = exoParams.num_nodes;
   numTotalElem = exoParams.num_elem;
@@ -721,11 +728,11 @@ FC_ReturnCode _fc_loadExodusDataset(
     }
     error = ex_get_node_set_ids(exoid, nodeset_ids);
     if (error != 0) {
-      fc_printfErrorMessage("Exodus failed to get elem blk ids");
+      fc_printfErrorMessage("Exodus failed to get node set ids");
       return FC_FILE_IO_ERROR;
     }
     for (i = 0; i < numNodeSet; i++) {
-      int numNode, numDistFactor, *nodes;
+      int numNode, numDistFactor;
       
       // Read & process members
       error = ex_get_node_set_param(exoid, nodeset_ids[i], &numNode,
@@ -735,58 +742,81 @@ FC_ReturnCode _fc_loadExodusDataset(
         free(meshes); free(nodeset_ids);
         return FC_FILE_IO_ERROR;
       }
-      nodes = (int*)malloc(numNode*sizeof(int));
-      if (!nodes) {
-        fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
-        free(meshes); free(nodeset_ids);
-        return FC_MEMORY_ERROR;
-      }
-      error = ex_get_node_set(exoid, nodeset_ids[i], nodes);
-      if (error != 0) {
-        fc_printfErrorMessage("Exodus failed to get nodes in node set");
-        free(meshes); free(nodeset_ids); free(nodes);
-        return FC_FILE_IO_ERROR;
-      }
-      
-      // Create subset & save info & data
-      // (Each node set might span meshes and will be multiple subsets)
-      // Have to save too much info or do too much work for lazy read,
-      // so, do it all here
+
       namebuf[0] = '\0';
       error = ex_get_name(exoid, EX_NODE_SET, nodeset_ids[i], namebuf);
       if (error != 0) {
-        fc_printfErrorMessage("Exodus failed to get node set name");
-        return FC_FILE_IO_ERROR;
+	fc_printfErrorMessage("Exodus failed to get node set name");
+	return FC_FILE_IO_ERROR;
       }
       if (strcmp(namebuf, "")) {
-        temp_name = namebuf;
+	temp_name = namebuf;
       } else {
-        temp_name = (char*)malloc(20*sizeof(char));
-        sprintf(temp_name, "nodeset_%d", nodeset_ids[i]);
+	temp_name = (char*)malloc(20*sizeof(char));
+	sprintf(temp_name, "nodeset_%d", nodeset_ids[i]);
       }
 
-      //split the subset into per-mesh subsets containing only the ids that
-      //exist on that mesh
-      for (j = 0; j < numMesh; j++) {
-        FC_Subset subset = FC_NULL_SUBSET;
-        for (k = 0; k < numNode; k++) {
-          if (hasVerts[j][nodes[k]-1] > -1) {
-            if (FC_HANDLE_EQUIV(subset, FC_NULL_SUBSET)) {
-              rc = fc_createSubset(meshes[j],  temp_name, FC_AT_VERTEX,
-                                   &subset);
-              if (rc != FC_SUCCESS) {
-                fc_printfErrorMessage("Failed to create nodeset #%d '%s' " 
-                                      " on mesh #%d", i, temp_name, j);
-                return rc;
-              }
-            }
-            fc_addMemberToSubset(subset, hasVerts[j][nodes[k]-1]);
-          }
-        }
+      if (numNode > 0){
+	int *nodes = (int*)malloc(numNode*sizeof(int));
+	if (!nodes) {
+	  fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	  free(meshes); free(nodeset_ids);
+	  return FC_MEMORY_ERROR;
+	}
+	error = ex_get_node_set(exoid, nodeset_ids[i], nodes);
+	if (error != 0) {
+	  fc_printfErrorMessage("Exodus failed to get nodes in node set");
+	  free(meshes); free(nodeset_ids); free(nodes);
+	  return FC_FILE_IO_ERROR;
+	}
+	
+	for (j = 0; j < numNode; j++){
+	  if (nodes[j] > numTotalVert){
+	    fc_printfErrorMessage("node[%d]=%d in nodeset %s has invalid id (numtotalverts = %d)\n",j,nodes[j],temp_name,numTotalVert);
+	    return FC_FILE_IO_ERROR;
+	  }
+	}
+	
+	// Create subset & save info & data
+	// (Each node set might span meshes and will be multiple subsets)
+	// Have to save too much info or do too much work for lazy read,
+	// so, do it all here
+
+	//split the subset into per-mesh subsets containing only the ids that
+	//exist on that mesh
+	for (j = 0; j < numMesh; j++) {
+	  FC_Subset subset = FC_NULL_SUBSET;
+	  for (k = 0; k < numNode; k++) {
+	    if (hasVerts[j][nodes[k]-1] > -1) {
+	      if (FC_HANDLE_EQUIV(subset, FC_NULL_SUBSET)) {
+		rc = fc_createSubset(meshes[j],  temp_name, FC_AT_VERTEX,
+				     &subset);
+		if (rc != FC_SUCCESS) {
+		  fc_printfErrorMessage("Failed to create nodeset #%d '%s' " 
+					" on mesh #%d", i, temp_name, j);
+		  return rc;
+		}
+	      }
+	      //this can be on more than 1 mesh
+	      fc_addMemberToSubset(subset, hasVerts[j][nodes[k]-1]);
+	    }
+	  }
+	}
+	free(nodes);
+      } else {
+	// if the node set is empty put it on all meshes
+	for (j = 0; j < numMesh; j++){
+	  FC_Subset subset = FC_NULL_SUBSET;
+	  rc = fc_createSubset(meshes[j], temp_name, FC_AT_VERTEX, &subset);
+	  if (rc != FC_SUCCESS){
+	    fc_printfErrorMessage("Failed to create empty nodeset '%s' on mesh #%d\n",
+				  temp_name,j);
+	    return rc;
+	  }
+	}
       }
-      free(nodes);
       if (!strcmp(namebuf, ""))
-        free(temp_name);
+	free(temp_name);
     } //loop over nodesets
     free(nodeset_ids);
   } //if numNodeSet
@@ -824,21 +854,6 @@ FC_ReturnCode _fc_loadExodusDataset(
         free(meshes); free(elemset_ids);
         return FC_FILE_IO_ERROR;
       }
-      elems = (int*)malloc(numElem*sizeof(int));
-      if (!elems) {
-        fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
-        free(meshes); free(elemset_ids);
-        return FC_MEMORY_ERROR;
-      }
-      error = ex_get_set(exoid, EX_ELEM_SET, elemset_ids[i], elems, NULL);
-      if (error != 0) {
-        fc_printfErrorMessage("Exodus failed to get elems in elem set");
-        free(meshes); free(elemset_ids); free(elems);
-        return FC_FILE_IO_ERROR;
-      }
-      
-      // Create subset & save info & data
-      // (Each elem set might span meshes and will be multiple subsets)
       namebuf[0] = '\0';
       error = ex_get_name(exoid, EX_ELEM_SET, elemset_ids[i], namebuf);
       if (error != 0) {
@@ -846,36 +861,65 @@ FC_ReturnCode _fc_loadExodusDataset(
 	return FC_FILE_IO_ERROR;
       }
       if (strcmp(namebuf, "")) {
-        temp_name = namebuf;
+	temp_name = namebuf;
       } else {
-        temp_name = (char*)malloc(20*sizeof(char));
-        sprintf(temp_name, "elemset_%d", elemset_ids[i]);
+	temp_name = (char*)malloc(20*sizeof(char));
+	sprintf(temp_name, "elemset_%d", elemset_ids[i]);
       }
 
-      //split the subset into per-mesh subsets containing only the ids that
-      //exist on that mesh
-      for (j = 0; j < numMesh; j++) {
-        FC_Subset subset = FC_NULL_SUBSET;
-	_FC_MeshSlot* meshSlot = _fc_getMeshSlot(meshes[j]);
-        for (k = 0; k < numElem; k++) {
-	  if (elems[k] - 1 >=  meshSlot->fileInfo.exoInfo.elemOffset &&
-	      elems[k] - 1 <  meshSlot->fileInfo.exoInfo.elemOffset + meshSlot->numElement) {
-            if (FC_HANDLE_EQUIV(subset, FC_NULL_SUBSET)) {
-              rc = fc_createSubset(meshes[j],  temp_name, FC_AT_ELEMENT,
-                                   &subset);
-              if (rc != FC_SUCCESS) {
-                fc_printfErrorMessage("Failed to create elemset #%d '%s' " 
-                                      " on mesh #%d", i, temp_name, j);
-                return rc;
-              }
-            }
-            fc_addMemberToSubset(subset,elems[k]-1-meshSlot->fileInfo.exoInfo.elemOffset);
-	  } //elem on this mesh
+      if (numElem > 0){
+	elems = (int*)malloc(numElem*sizeof(int));
+	if (!elems) {
+	  fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	  free(meshes); free(elemset_ids);
+	  return FC_MEMORY_ERROR;
+	}
+	error = ex_get_set(exoid, EX_ELEM_SET, elemset_ids[i], elems, NULL);
+	if (error != 0) {
+	  fc_printfErrorMessage("Exodus failed to get elems in elem set");
+	  free(meshes); free(elemset_ids); free(elems);
+	  return FC_FILE_IO_ERROR;
+	}
+	
+	// Create subset & save info & data
+	// (Each elem set might span meshes and will be multiple subsets)
+
+	//split the subset into per-mesh subsets containing only the ids that
+	//exist on that mesh
+	for (j = 0; j < numMesh; j++) {
+	  FC_Subset subset = FC_NULL_SUBSET;
+	  _FC_MeshSlot* meshSlot = _fc_getMeshSlot(meshes[j]);
+	  for (k = 0; k < numElem; k++) {
+	    if (elems[k] - 1 >=  meshSlot->fileInfo.exoInfo.elemOffset &&
+		elems[k] - 1 <  meshSlot->fileInfo.exoInfo.elemOffset + meshSlot->numElement) {
+	      if (FC_HANDLE_EQUIV(subset, FC_NULL_SUBSET)) {
+		rc = fc_createSubset(meshes[j],  temp_name, FC_AT_ELEMENT,
+				     &subset);
+		if (rc != FC_SUCCESS) {
+		  fc_printfErrorMessage("Failed to create elemset #%d '%s' " 
+					" on mesh #%d", i, temp_name, j);
+		  return rc;
+		}
+	      }
+	      fc_addMemberToSubset(subset,elems[k]-1-meshSlot->fileInfo.exoInfo.elemOffset);
+	    } //elem on this mesh
+	  }
+	}
+	free(elems);
+      } else {
+	//if the elem set is empty put on all meshes
+	for (j = 0; j < numMesh; j++){
+	  FC_Subset subset = FC_NULL_SUBSET;
+	  rc = fc_createSubset(meshes[j], temp_name, FC_AT_ELEMENT, &subset);
+	  if (rc != FC_SUCCESS){
+	    fc_printfErrorMessage("Failed to create empty nodeset '%s' on mesh #%d\n",
+				  temp_name,j);
+	    return rc;
+	  }
 	}
       }
-      free(elems);
       if (!strcmp(namebuf, ""))
-        free(temp_name);
+	free(temp_name);
     } //loop over elemsets
     free(elemset_ids);
   } //if numElemSet
@@ -907,84 +951,133 @@ FC_ReturnCode _fc_loadExodusDataset(
         free(meshes); free(sideset_ids);
         return FC_FILE_IO_ERROR;
       }
-      elems = (int*)malloc(numSide*sizeof(int));
-      sides = (int*)malloc(numSide*sizeof(int));
-      if (!elems || !sides) {
-        fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
-        free(meshes); free(sideset_ids); free(elems); free(sides);
-        return FC_MEMORY_ERROR;
-      }
-      error = ex_get_side_set(exoid, sideset_ids[i], elems, sides);
-      if (error != 0) {
-        fc_printfErrorMessage("Exodus failed to get sides in side set");
-        free(meshes); free(sideset_ids); free(elems); free(sides);
-        return FC_FILE_IO_ERROR;
-      }
-      free(sides); // don't need this right now
+      if (numSide > 0){
+	elems = (int*)malloc(numSide*sizeof(int));
+	sides = (int*)malloc(numSide*sizeof(int));
+	if (!elems || !sides) {
+	  fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	  free(meshes); free(sideset_ids); free(elems); free(sides);
+	  return FC_MEMORY_ERROR;
+	}
+	error = ex_get_side_set(exoid, sideset_ids[i], elems, sides);
+	if (error != 0) {
+	  fc_printfErrorMessage("Exodus failed to get sides in side set");
+	  free(meshes); free(sideset_ids); free(elems); free(sides);
+	  return FC_FILE_IO_ERROR;
+	}
+	free(sides); // don't need this right now
       
-      // Create subset & save info
-      // (Each side set might span meshes and will be multiple subsets)
-      // Unlike node sets, will be lazily read.
-      namebuf[0] = '\0';
-      error = ex_get_name(exoid, EX_SIDE_SET, sideset_ids[i], namebuf);
-      if (error != 0) {
-        fc_printfErrorMessage("Exodus failed to get side set name");
-        return FC_FILE_IO_ERROR;
-      }
-      if (strcmp(namebuf, "")) {
-        temp_name = namebuf;
+	// Create subset & save info
+	// (Each side set might span meshes and will be multiple subsets)
+	// Unlike node sets, will be lazily read.
+	namebuf[0] = '\0';
+	error = ex_get_name(exoid, EX_SIDE_SET, sideset_ids[i], namebuf);
+	if (error != 0) {
+	  fc_printfErrorMessage("Exodus failed to get side set name");
+	  return FC_FILE_IO_ERROR;
+	}
+	if (strcmp(namebuf, "")) {
+	  temp_name = namebuf;
+	} else {
+	  temp_name = (char*)malloc(20*sizeof(char));
+	  sprintf(temp_name, "sideset_%d", sideset_ids[i]);
+	}
+	for (j = 0; j < numMesh; j++) { 
+	  subsets[j] = FC_NULL_SUBSET;
+	  elemOffsets[j] = _fc_getMeshSlot(meshes[j])->fileInfo.exoInfo.elemOffset;
+	}
+	for (j = 0; j < numSide; j++) {
+	  _FC_SubSlot* subSlot;
+	  // Figure out which mesh this side is on  - compare exo id to offset which is the running count of the total up till that point
+	  for (k = numMesh-1; k >= 0; k--) 
+	    if (elems[j] - 1 >= elemOffsets[k])
+	      break;
+	  subSlot = _fc_getSubSlot(subsets[k]);
+	  // If first time we've seen a side for this mesh, make a subset
+	  if (!subSlot) {
+	    FC_AssociationType assoc;
+	    FC_ElementType elemType;
+	    int topoDim;
+	    
+	    rc = fc_getMeshElementType(meshes[k], &elemType);
+	    if (rc != FC_SUCCESS)
+	      return rc;
+	    topoDim = fc_getElementTypeTopoDim(elemType);
+	    if (topoDim == 3)
+	      assoc = FC_AT_FACE;
+	    else if (topoDim == 2)
+	      assoc = FC_AT_EDGE;
+	    else {
+	      fc_printfErrorMessage("Encountered unexpected element topology");
+	      return FC_ERROR;
+	    }
+	    //create the subset but dont fill in the ids
+	    rc = fc_createSubset(meshes[k],  temp_name, assoc, &subsets[k]);
+	    if (rc != FC_SUCCESS) {
+	      fc_printfErrorMessage("Failed to create sideset #%d '%s' " 
+				    " on mesh #%d", i, temp_name, j);
+	      return rc;
+	    }
+	    subSlot = _fc_getSubSlot(subsets[k]);
+	    subSlot->fileInfo.exoInfo.assoc_flag = 1;
+	    subSlot->fileInfo.exoInfo.nsssid = sideset_ids[i];
+	    //Because this data exists on disk and can be reloaded, set the committed flag
+	    subSlot->header.committed = 1;
+	  }
+	  // count the side
+	  subSlot->numMember++;
+	}
+	free(elems);
+	if (!strcmp(namebuf, ""))
+	  free(temp_name);
       } else {
-        temp_name = (char*)malloc(20*sizeof(char));
-        sprintf(temp_name, "sideset_%d", sideset_ids[i]);
-      }
-      for (j = 0; j < numMesh; j++) { 
-        subsets[j] = FC_NULL_SUBSET;
-        elemOffsets[j] = _fc_getMeshSlot(meshes[j])->fileInfo.exoInfo.elemOffset;
-      }
-      for (j = 0; j < numSide; j++) {
-        _FC_SubSlot* subSlot;
-        // Figure out which mesh this side is on  - compare exo id to offset which is the running count of the total up till that point
-        for (k = numMesh-1; k >= 0; k--) 
-          if (elems[j] - 1 >= elemOffsets[k])
-            break;
-        subSlot = _fc_getSubSlot(subsets[k]);
-        // If first time we've seen a side for this mesh, make a subset
-        if (!subSlot) {
-          FC_AssociationType assoc;
-          FC_ElementType elemType;
-          int topoDim;
-
-          rc = fc_getMeshElementType(meshes[k], &elemType);
-          if (rc != FC_SUCCESS)
-            return rc;
-          topoDim = fc_getElementTypeTopoDim(elemType);
-          if (topoDim == 3)
-            assoc = FC_AT_FACE;
-          else if (topoDim == 2)
-            assoc = FC_AT_EDGE;
-          else {
-            fc_printfErrorMessage("Encountered unexpected element topology");
-            return FC_ERROR;
-          }
-	  //create the subset but dont fill in the ids
-          rc = fc_createSubset(meshes[k],  temp_name, assoc, &subsets[k]);
-          if (rc != FC_SUCCESS) {
-            fc_printfErrorMessage("Failed to create sideset #%d '%s' " 
-                                  " on mesh #%d", i, temp_name, j);
-            return rc;
-          }
-          subSlot = _fc_getSubSlot(subsets[k]);
-          subSlot->fileInfo.exoInfo.assoc_flag = 1;
-          subSlot->fileInfo.exoInfo.nsssid = sideset_ids[i];
+	//empty side set - put on all meshes
+	namebuf[0] = '\0';
+	error = ex_get_name(exoid, EX_SIDE_SET, sideset_ids[i], namebuf);
+	if (error != 0) {
+	  fc_printfErrorMessage("Exodus failed to get side set name");
+	  return FC_FILE_IO_ERROR;
+	}
+	if (strcmp(namebuf, "")) {
+	  temp_name = namebuf;
+	} else {
+	  temp_name = (char*)malloc(20*sizeof(char));
+	  sprintf(temp_name, "sideset_%d", sideset_ids[i]);
+	}
+	for (k = 0; k < numMesh; k++) {
+	  FC_AssociationType assoc;
+	  FC_ElementType elemType;
+	  _FC_SubSlot* subSlot;
+	  int topoDim;
+	  
+	  rc = fc_getMeshElementType(meshes[k], &elemType);
+	  if (rc != FC_SUCCESS)
+	    return rc;
+	  topoDim = fc_getElementTypeTopoDim(elemType);
+	  if (topoDim == 3)
+	    assoc = FC_AT_FACE;
+	  else if (topoDim == 2)
+	    assoc = FC_AT_EDGE;
+	  else {
+	    fc_printfErrorMessage("Encountered unexpected element topology");
+	    return FC_ERROR;
+	  }
+	  //create the subset, with no members
+	  rc = fc_createSubset(meshes[k],  temp_name, assoc, &subsets[k]);
+	  if (rc != FC_SUCCESS) {
+	    fc_printfErrorMessage("Failed to create sideset #%d '%s' " 
+				  " on mesh #%d", i, temp_name, j);
+	    return rc;
+	  }
+	  subSlot = _fc_getSubSlot(subsets[k]);
+	  subSlot->fileInfo.exoInfo.assoc_flag = 1;
+	  subSlot->fileInfo.exoInfo.nsssid = sideset_ids[i];
 	  //Because this data exists on disk and can be reloaded, set the committed flag
-          subSlot->header.committed = 1;
-        }
-        // count the side
-        subSlot->numMember++;
+	  subSlot->header.committed = 1;
+	}
+	if (!strcmp(namebuf, ""))
+	  free(temp_name);
       }
-      free(elems);
-      if (!strcmp(namebuf, ""))
-        free(temp_name);
     } // end of loop over side sets
     free(sideset_ids);
   }
@@ -997,14 +1090,13 @@ FC_ReturnCode _fc_loadExodusDataset(
     return FC_FILE_IO_ERROR;
   }
   if (numProp > 0) {
-    char** prop_names;
-    prop_names = (char**)malloc(numProp*sizeof(char*));
+    char** prop_names = (char**)malloc(numProp*sizeof(char*));
     if (!prop_names) {
       fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
       return FC_MEMORY_ERROR;
     }
     for (i = 0; i < numProp; i++) {
-      prop_names[i] = (char*)malloc((MAX_STR_LENGTH)*sizeof(char));
+      prop_names[i] = (char*)malloc((MAX_STR_LENGTH+1)*sizeof(char));
       if (!prop_names[i]) {
         fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
         return FC_MEMORY_ERROR;
@@ -1808,11 +1900,24 @@ FC_ReturnCode _fc_readExodusAttributeData(
  *
  * \description
  *
+ *  Writes out dataset to exodus file.
+ *  Note:  We do not combine node, elem, side sets by names -- why not?
+ *         SequenceSubsets are first converted to normal subsets with
+ *         postpended step number and then written out in the same
+ *         way that subsets are written. Note that if the
+ *         name is too long for exodus, this may get clipped.
+ *  Note: currently ex_put_set only does anything if the set has numMember > 0
+ *  therefore only doing this if numMember > 0. If that changes, the call
+ *  will have to be reinstantiated for non-empty subsets. I am bypassing
+ *  the call currently becuase I cannot check the return on it because the
+ *  return for an empty subset is EX_WARN which is defined in exodus's
+ *  internal headers
+ *
  * \todo 
  *    - Committed flag for seq vars and now non-seqvars. see what the
  *      issue is there.
- *    - why dont we combine node sets by names? currently
- *      I will not combine elem sets.
+ *    - perhaps shorten the seqsubset name before appending numbers
+ *    - check empty side set write out
  *
  *
  * \modifications
@@ -1821,6 +1926,9 @@ FC_ReturnCode _fc_readExodusAttributeData(
  *    - 08/10/2007 ACG added nodal attr writeouts for vertex non seq vars
  *    - 10/05/2007 ACG write out elem sets
  *    - 10/17/2007 ACG removed names file
+ *    - 03/14/2007 ACG convert seqSubsets to subsets and write out
+ *    - 04/12/2008 ACG empty node and elem sets (not side set) writeout
+ *    - 05/12/2008 ACG empty side set writeout
  */
 FC_ReturnCode _fc_writeExodusDataset(
   FC_Dataset dataset, /**< input - the dataset to be written */
@@ -1834,7 +1942,7 @@ FC_ReturnCode _fc_writeExodusDataset(
   FC_Mesh* meshes;
   FC_Sequence* sequences, sequence;
   FC_Subset* nodeSets;
-  FC_Subset* sideSets;
+  FC_Subset* sideSets; 
   FC_Subset* elemSets;
   int numMesh, numTotalVert, numTotalElem, maxNumDim, numNodeSet,
     numSideSet, numElemSet;
@@ -1910,7 +2018,8 @@ FC_ReturnCode _fc_writeExodusDataset(
   for (i = 0; i < numMesh; i++) {
     int numVert, numElem, numDim;
     int numSubset, numVar;
-    FC_Subset* subsets;
+    int numSeqSubset, *numStepPerSeqSub;
+    FC_Subset *subsets, **seqSubsets;
     FC_Variable* vars;
     FC_ElementType elemType;
 
@@ -1930,6 +2039,26 @@ FC_ReturnCode _fc_writeExodusDataset(
     numTotalElem += numElem;
     if (numDim > maxNumDim)
       maxNumDim = numDim;
+
+    // convert any seqSubsets to subsets
+    rc = fc_getSeqSubsets(meshes[i], &numSeqSubset, &numStepPerSeqSub, &seqSubsets);
+    if (rc != FC_SUCCESS)
+      return rc;
+    for (j = 0; j < numSeqSubset; j++){
+      char* name;
+      rc = fc_getSubsetName(seqSubsets[j][0],&name);
+      if (rc != FC_SUCCESS)
+	return rc;
+      rc = fc_convertSeqSubsetToSubsets(numStepPerSeqSub[j],seqSubsets[j], name, &subsets);
+      if (rc != FC_SUCCESS)
+	return rc;
+      free(name);
+      free(subsets); //just the array
+      free(seqSubsets[j]);
+    }
+    free(numStepPerSeqSub);
+    free(seqSubsets);
+
 
     // count (& save) subsets for nodesets and sidesets
     rc = fc_getSubsets(meshes[i], &numSubset, &subsets);
@@ -2007,6 +2136,12 @@ FC_ReturnCode _fc_writeExodusDataset(
       }
     } // end of loop over subsets
     free(subsets);
+    rc = fc_getNumSeqSubset(meshes[i], &numSeqSubset);
+    if (rc != FC_SUCCESS)
+      return rc;
+    if (numSeqSubset > 0 )
+      fc_printfWarningMessage("Warning: not writing out %d sequence subsets", numSeqSubset);
+
 
     // count vars that can be elem attributes (not nodal)
     rc = fc_getVariables(meshes[i], &numVar, &vars);
@@ -2033,7 +2168,7 @@ FC_ReturnCode _fc_writeExodusDataset(
                               "dimensionality < 1");
     return FC_ERROR;
   }
-
+  
   // Initialize file parameters
   rc = fc_getDatasetName(dataset, &temp_name);
   strncpy(exoParams.title, temp_name, MAX_STR_LENGTH);
@@ -2057,7 +2192,6 @@ FC_ReturnCode _fc_writeExodusDataset(
   exoParams.num_elem_maps = 0;
 
   error = ex_put_init_ext(exoid, &exoParams);
-
   free(temp_name);
   if (error != 0) {
     fc_printfErrorMessage("Exodus failed to put file parameters");
@@ -2094,18 +2228,20 @@ FC_ReturnCode _fc_writeExodusDataset(
     }
   }
   // create global, components of coords
-  for (i = 0; i < numMesh; i++) {
+   for (i = 0; i < numMesh; i++) {
     double* temp_coords;
     rc = fc_getMeshCoordsPtr(meshes[i], &temp_coords);
     if (rc != FC_SUCCESS)
       return rc;
     for (j = 0; j < numVerts[i]; j++) {
-      for (k = 0; k < numDims[i]; k++)
+      for (k = 0; k < numDims[i]; k++){
         coords[k][vertOffsets[i] + j] = temp_coords[j*numDims[i]+k];
+      }
       for (k = numDims[i]; k < maxNumDim; k++)
         coords[k][vertOffsets[i] + j] = 0.;
     } 
   }
+
   // do it
   error = ex_put_coord(exoid, coords[0], coords[1], coords[2]);
   for (i = 0; i < maxNumDim; i++)
@@ -2114,6 +2250,7 @@ FC_ReturnCode _fc_writeExodusDataset(
     fc_printfErrorMessage("Exodus failed to put coords");
     return FC_FILE_IO_ERROR;
   }
+
   error = ex_put_coord_names(exoid, coord_names);
   if (error != 0) {
     fc_printfErrorMessage("Exodus failed to put coord names");
@@ -2122,7 +2259,7 @@ FC_ReturnCode _fc_writeExodusDataset(
 
   // --- Write element blocks (i.e. the conns) ---
 
-  // Create block ids if they do not already exits
+  // Create block ids if they do not already exist
   // To get unique ids, start w/ the max existing id + 1
   maxID = 0;
   for (i = 0; i < numMesh; i++) {
@@ -2146,7 +2283,6 @@ FC_ReturnCode _fc_writeExodusDataset(
     _FC_MeshSlot* meshSlot = _fc_getMeshSlot(meshes[i]);
     blk_ids[i] = meshSlot->fileInfo.id;
   }
-
 
   for (i = 0; i < numMesh; i++) {
     _FC_MeshSlot* meshSlot = _fc_getMeshSlot(meshes[i]);
@@ -2183,7 +2319,8 @@ FC_ReturnCode _fc_writeExodusDataset(
       fc_printfErrorMessage("Exodus failed to put elem blk meta data");
       return FC_FILE_IO_ERROR;
     }
- 
+
+
     rc = fc_getMeshElementConnsPtr(meshes[i], &temp_conns);
     if (rc != FC_SUCCESS)
       return rc;
@@ -2218,7 +2355,6 @@ FC_ReturnCode _fc_writeExodusDataset(
   }
 
   // --- Write side sets ---
-
   // FIX? change to use concat method which is faster
 
   for (i = 0; i < numSideSet; i++) {
@@ -2269,34 +2405,40 @@ FC_ReturnCode _fc_writeExodusDataset(
       fc_printfErrorMessage("Exodus failed to put side set param");
       return FC_FILE_IO_ERROR;
     }
-    // have to convert mesh side ids to global elem ids & local to elem side id
-    // (members gets turned into element IDs)
-    sides = (int*)malloc(numMember*sizeof(int));
-    if (!sides) {
-      fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
-      return FC_MEMORY_ERROR;
-    }
-    for (j = 0; j < numMember; j++) {
-      int elemID, entityID;
-      // get first element that has this entity, then figure out local ID
-      elemID = elemParentsPerEntity[members[j]][0];
-      for (k = 0; k < numEntityPerElem; k++) {
-        if (elemToEntityConns[elemID*numEntityPerElem+k] == members[j]) {
-          entityID = k;
-          break;
-        }
-      }
-      members[j] = elemID + meshSlot->fileInfo.exoInfo.elemOffset + 1;
-      sides[j] = entityID + 1;
-    }
     // put side set
-    error = ex_put_side_set(exoid, sideset_id, members, sides);
-    free(members);
-    free(sides);
-    if (error != 0) {
-      fc_printfErrorMessage("Exodus failed to put side set");
-      return FC_FILE_IO_ERROR;
-    }
+    // 5-12-08 currently ex_put_side_set only does anything if the set has numMember > 0
+    //therefore only doing this if numMember > 0. If that changes this check will
+    //have to change. I cannot check the return on this because the return for an
+    //empty subset is EX_WARN which is defined in exodus's internal headers
+    if (numMember){
+      sides = (int*)malloc(numMember*sizeof(int));
+      if (!sides) {
+	fc_printfErrorMessage("%s", fc_getReturnCodeText(FC_MEMORY_ERROR));
+	return FC_MEMORY_ERROR;
+      }
+      // have to convert mesh side ids to global elem ids & local to elem side id
+      // (members gets turned into element IDs)
+      for (j = 0; j < numMember; j++) {
+	int elemID, entityID;
+	// get first element that has this entity, then figure out local ID
+	elemID = elemParentsPerEntity[members[j]][0];
+	for (k = 0; k < numEntityPerElem; k++) {
+	  if (elemToEntityConns[elemID*numEntityPerElem+k] == members[j]) {
+	    entityID = k;
+	    break;
+	  }
+	}
+	members[j] = elemID + meshSlot->fileInfo.exoInfo.elemOffset + 1;
+	sides[j] = entityID + 1;
+      }
+      error = ex_put_side_set(exoid, sideset_id, members, sides);
+      free(members);
+      free(sides);
+      if (error != 0) {
+	fc_printfErrorMessage("Exodus failed to put side set");
+	return FC_FILE_IO_ERROR;
+      }
+    } 
     // restrict name to MAX_STR_LENGTH
     temp_name = malloc(MAX_STR_LENGTH*sizeof(char));
     strncpy(temp_name, subSlot->header.name, MAX_STR_LENGTH);
@@ -2341,15 +2483,22 @@ FC_ReturnCode _fc_writeExodusDataset(
       fc_printfErrorMessage("Exodus failed to put node set param");
       return FC_FILE_IO_ERROR;
     }
+
     // have to convert mesh node ids to global node ids
     for (j = 0; j < numMember; j++)
       members[j] += vertOffsets[meshID] + 1;
     // put node set
-    error = ex_put_node_set(exoid, nodeset_id, members);
-    free(members);
-    if (error != 0) {
-      fc_printfErrorMessage("Exodus failed to put node set");
-      return FC_FILE_IO_ERROR;
+    // 4-12-08 currently ex_put_node_set only does anything if the set has numMember > 0
+    //therefore only doing this if numMember > 0. If that changes this check will
+    //have to change. I cannot check the return on this because the return for an
+    //empty subset is EX_WARN which is defined in exodus's internal headers
+    if (numMember){
+      error = ex_put_node_set(exoid, nodeset_id, members);
+      free(members);
+      if (error != 0){
+	fc_printfErrorMessage("Exodus failed to put node set");
+	return FC_FILE_IO_ERROR;
+      }
     }
     // restrict name to MAX_STR_LENGTH
     temp_name = malloc(MAX_STR_LENGTH*sizeof(char));
@@ -2399,11 +2548,17 @@ FC_ReturnCode _fc_writeExodusDataset(
       members[j] += meshSlot->fileInfo.exoInfo.elemOffset + 1;
     }
     // put elem set
-    error = ex_put_set(exoid, EX_ELEM_SET, elemset_id, members, NULL);
-    free(members);
-    if (error != 0) {
-      fc_printfErrorMessage("Exodus failed to put elem set");
-      return FC_FILE_IO_ERROR;
+    // 4-12-08 currently ex_put_set only does anything if the set has numMember > 0
+    //therefore only doing this if numMember > 0. If that changes this check will
+    //have to change. I cannot check the return on this because the return for an
+    //empty subset is EX_WARN which is defined in exodus's internal headers
+   if (numMember){
+      error = ex_put_set(exoid, EX_ELEM_SET, elemset_id, members, NULL);
+      free(members);
+      if (error != 0) {
+	fc_printfErrorMessage("Exodus failed to put elem set");
+	return FC_FILE_IO_ERROR;
+      }
     }
     // restrict name to MAX_STR_LENGTH
     temp_name = malloc(MAX_STR_LENGTH*sizeof(char));

@@ -50,8 +50,10 @@
 extern "C" {
 #endif
 
+
 // check state of library
 int _fc_isLibraryInit(void);
+
 
 #ifdef __cplusplus
 }

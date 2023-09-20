@@ -82,6 +82,7 @@ FCLIB_DATA_DIR = ../../fclib-data
 # compiler
 CC = gcc
 
+
 # compiler flags
 # debugging on by default
 DEBUG_FLAG = -g
@@ -131,7 +132,7 @@ JAVA_LIB_DIR =
 ## The library
 ##
 
-FC_VERSION = 1.6.1
+FC_VERSION = 1.7.0
 FC_ROOT = fc
 FCLIB = lib${FC_ROOT}.a
 FCLDLIB = -l${FC_ROOT}
@@ -179,13 +180,14 @@ endif
 HOST_TEST = $(patsubst ann%,ann,${HOSTNAME})
 ifeq (${HOST_TEST},ann)
   MISC_HOME = /home/gentile/fclib/utils
-  NETCDF_HOME = ${MISC_HOME}/exodusii/exodusii-4.61/install-netcdf
-  EXODUS_HOME = ${MISC_HOME}/exodusii/exodusii-4.61
-  EXODUS_LIBS = -lexoIIv2c
-  NETCDF_INC_DIR = ${NETCDF_HOME}/inc
+  NETCDF_HOME = /home/gentile/fclib/fcdmf/dependency_libs/bundle
+  NETCDF_INC_DIR = ${NETCDF_HOME}/include
   NETCDF_LIB_DIR = ${NETCDF_HOME}/lib
+  NETCDF_LIBS = -lnetcdf
+  EXODUS_HOME = ${NETCDF_HOME}
   EXODUS_INC_DIR = ${EXODUS_HOME}/include
   EXODUS_LIB_DIR = ${EXODUS_HOME}/lib
+  EXODUS_LIBS = -lexoIIv2c
 #  SWIG_HOME = ${MISC_HOME}/bin
 #  PERL_INC_DIR = /usr/lib/perl5/5.6.1/i386-linux/CORE
 #  PY_INC_DIR = /usr/include/python2.2
